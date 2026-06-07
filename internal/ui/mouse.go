@@ -1,6 +1,10 @@
 package ui
 
-import tea "github.com/charmbracelet/bubbletea"
+import (
+	"abacus/internal/graph"
+
+	tea "github.com/charmbracelet/bubbletea"
+)
 
 type pointerAction int
 
@@ -86,11 +90,61 @@ func (m *App) handleDetailsPointerEvent(event pointerEvent) {
 
 func (m *App) handleTreePointerEvent(event pointerEvent) {
 	switch event.action {
+	case pointerActionPlainClick:
+		m.selectTreeRowAtPointer(event)
 	case pointerActionWheelUp:
 		m.scrollTreeViewportBy(-1)
 	case pointerActionWheelDown:
 		m.scrollTreeViewportBy(1)
 	}
+}
+
+func (m *App) selectTreeRowAtPointer(event pointerEvent) {
+	rowIndex, ok := m.treeRowIndexAtPointer(event)
+	if !ok {
+		return
+	}
+	row := m.visibleRows[rowIndex]
+	m.cursor = rowIndex
+	m.focus = FocusTree
+	m.treeMouseScrolled = false
+
+	if m.treeExpansionHitAreaContains(event, row) && len(row.Node.Children) > 0 {
+		if m.isNodeExpandedInView(row) {
+			m.collapseNodeForView(row)
+		} else {
+			m.expandNodeForView(row)
+		}
+		m.recalcVisibleRows()
+	}
+
+	m.updateViewportContent()
+}
+
+func (m *App) treeRowIndexAtPointer(event pointerEvent) (int, bool) {
+	treeBounds := m.pointerLayout().tree
+	contentY := event.y - treeBounds.y - 1
+	if contentY < 0 || contentY >= m.treePaneHeight() {
+		return 0, false
+	}
+	rowIndex := m.treeTopLine + contentY
+	if rowIndex < 0 || rowIndex >= len(m.visibleRows) {
+		return 0, false
+	}
+	return rowIndex, true
+}
+
+func (m *App) treeExpansionHitAreaContains(event pointerEvent, row graph.TreeRow) bool {
+	treeBounds := m.pointerLayout().tree
+	contentX := event.x - treeBounds.x - 1
+	if contentX < 0 {
+		return false
+	}
+	return contentX < treeExpansionHitAreaWidth(row)
+}
+
+func treeExpansionHitAreaWidth(row graph.TreeRow) int {
+	return 1 + row.Depth*2 + 2 + 1
 }
 
 func (m *App) scrollTreeViewportBy(delta int) {

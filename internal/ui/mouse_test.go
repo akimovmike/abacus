@@ -259,6 +259,277 @@ func TestPlainClickInsideDetailsFocusesDetailsWithoutChangingSelection(t *testin
 	}
 }
 
+func TestPlainClickOnTreeRowSelectsRowFocusesTreeAndUpdatesDetails(t *testing.T) {
+	app := pointerTestApp()
+	app.focus = FocusDetails
+	app.cursor = 0
+
+	model, cmd := app.Update(tea.MouseMsg{
+		X:      12,
+		Y:      3,
+		Action: tea.MouseActionPress,
+		Button: tea.MouseButtonLeft,
+	})
+	afterApp := model.(*App)
+
+	if cmd != nil {
+		t.Fatal("expected tree click to return nil command")
+	}
+	if afterApp.focus != FocusTree {
+		t.Fatalf("expected focus to move to tree, got %v", afterApp.focus)
+	}
+	if afterApp.cursor != 1 {
+		t.Fatalf("expected tree selection to move to row 1, got %d", afterApp.cursor)
+	}
+	if afterApp.detailIssueID != "ab-2" {
+		t.Fatalf("expected details to update to ab-2, got %s", afterApp.detailIssueID)
+	}
+}
+
+func TestPlainClickOnTreeExpansionHitAreaSelectsAndTogglesExpandableRow(t *testing.T) {
+	app := pointerExpandableTestApp()
+	app.cursor = 1
+	app.focus = FocusDetails
+
+	model, cmd := app.Update(tea.MouseMsg{
+		X:      3,
+		Y:      2,
+		Action: tea.MouseActionPress,
+		Button: tea.MouseButtonLeft,
+	})
+	afterApp := model.(*App)
+
+	if cmd != nil {
+		t.Fatal("expected tree toggle click to return nil command")
+	}
+	if afterApp.focus != FocusTree {
+		t.Fatalf("expected focus to move to tree, got %v", afterApp.focus)
+	}
+	if afterApp.cursor != 0 {
+		t.Fatalf("expected parent row to be selected, got cursor %d", afterApp.cursor)
+	}
+	if !afterApp.visibleRows[0].Node.Expanded {
+		t.Fatal("expected parent row to be expanded")
+	}
+	if len(afterApp.visibleRows) != 3 {
+		t.Fatalf("expected child to become visible after expansion, got %d rows", len(afterApp.visibleRows))
+	}
+	if afterApp.detailIssueID != "ab-parent" {
+		t.Fatalf("expected details to update to ab-parent, got %s", afterApp.detailIssueID)
+	}
+}
+
+func TestPlainClickOnTreeExpansionHitAreaBoundaryStopsBeforeStatusIcon(t *testing.T) {
+	t.Run("separator space toggles", func(t *testing.T) {
+		app := pointerExpandableTestApp()
+
+		model, _ := app.Update(tea.MouseMsg{
+			X:      4,
+			Y:      2,
+			Action: tea.MouseActionPress,
+			Button: tea.MouseButtonLeft,
+		})
+		afterApp := model.(*App)
+
+		if !afterApp.visibleRows[0].Node.Expanded {
+			t.Fatal("expected click on separator before status icon to expand")
+		}
+	})
+
+	t.Run("status icon selects only", func(t *testing.T) {
+		app := pointerExpandableTestApp()
+
+		model, _ := app.Update(tea.MouseMsg{
+			X:      5,
+			Y:      2,
+			Action: tea.MouseActionPress,
+			Button: tea.MouseButtonLeft,
+		})
+		afterApp := model.(*App)
+
+		if afterApp.visibleRows[0].Node.Expanded {
+			t.Fatal("expected click on status icon to select without expanding")
+		}
+		if afterApp.cursor != 0 {
+			t.Fatalf("expected parent row to be selected, got cursor %d", afterApp.cursor)
+		}
+	})
+}
+
+func TestPlainClickOnTreeExpansionHitAreaCollapsesExpandedRow(t *testing.T) {
+	app := pointerExpandableTestApp()
+	app.visibleRows[0].Node.Expanded = true
+	app.recalcVisibleRows()
+	app.cursor = 2
+
+	model, cmd := app.Update(tea.MouseMsg{
+		X:      3,
+		Y:      2,
+		Action: tea.MouseActionPress,
+		Button: tea.MouseButtonLeft,
+	})
+	afterApp := model.(*App)
+
+	if cmd != nil {
+		t.Fatal("expected tree collapse click to return nil command")
+	}
+	if afterApp.visibleRows[0].Node.Expanded {
+		t.Fatal("expected parent row to collapse")
+	}
+	if afterApp.cursor != 0 {
+		t.Fatalf("expected collapsed parent to stay selected, got cursor %d", afterApp.cursor)
+	}
+	if len(afterApp.visibleRows) != 2 {
+		t.Fatalf("expected child to become hidden after collapse, got %d rows", len(afterApp.visibleRows))
+	}
+}
+
+func TestPlainClickOnTreeLeafRowSelectsOnly(t *testing.T) {
+	app := pointerExpandableTestApp()
+
+	model, cmd := app.Update(tea.MouseMsg{
+		X:      3,
+		Y:      3,
+		Action: tea.MouseActionPress,
+		Button: tea.MouseButtonLeft,
+	})
+	afterApp := model.(*App)
+
+	if cmd != nil {
+		t.Fatal("expected leaf row click to return nil command")
+	}
+	if afterApp.cursor != 1 {
+		t.Fatalf("expected leaf row to be selected, got cursor %d", afterApp.cursor)
+	}
+	if afterApp.visibleRows[0].Node.Expanded {
+		t.Fatal("expected parent to remain collapsed after leaf row click")
+	}
+	if len(afterApp.visibleRows) != 2 {
+		t.Fatalf("expected leaf click not to change visible row count, got %d", len(afterApp.visibleRows))
+	}
+}
+
+func TestPlainClickOnSelectedTreeRowIsIdempotent(t *testing.T) {
+	app := pointerExpandableTestApp()
+	app.cursor = 1
+	app.focus = FocusTree
+	app.ShowDetails = true
+	app.activeOverlay = OverlayNone
+	app.updateViewportContent()
+	app.viewport.YOffset = 2
+
+	model, cmd := app.Update(tea.MouseMsg{
+		X:      12,
+		Y:      3,
+		Action: tea.MouseActionPress,
+		Button: tea.MouseButtonLeft,
+	})
+	afterApp := model.(*App)
+
+	if cmd != nil {
+		t.Fatal("expected selected row click to return nil command")
+	}
+	if afterApp.cursor != 1 {
+		t.Fatalf("expected selection to stay on row 1, got %d", afterApp.cursor)
+	}
+	if !afterApp.ShowDetails {
+		t.Fatal("expected selected row click not to toggle details")
+	}
+	if afterApp.activeOverlay != OverlayNone {
+		t.Fatalf("expected selected row click not to open overlay, got %v", afterApp.activeOverlay)
+	}
+	if afterApp.viewport.YOffset != 2 {
+		t.Fatalf("expected selected row click not to reset details offset, got %d", afterApp.viewport.YOffset)
+	}
+}
+
+func TestPlainClickOnTreeRowSelectsInTallAndDetailHiddenLayouts(t *testing.T) {
+	tests := []struct {
+		name  string
+		setup func(*App)
+		x     int
+		y     int
+	}{
+		{
+			name: "tall layout",
+			setup: func(app *App) {
+				app.layout = LayoutTall
+				app.recalcViewportSize()
+			},
+			x: 12,
+			y: 3,
+		},
+		{
+			name: "detail hidden layout",
+			setup: func(app *App) {
+				app.ShowDetails = false
+				app.recalcViewportSize()
+			},
+			x: 70,
+			y: 3,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			app := pointerTestApp()
+			app.cursor = 0
+			app.focus = FocusDetails
+			tt.setup(app)
+
+			model, cmd := app.Update(tea.MouseMsg{
+				X:      tt.x,
+				Y:      tt.y,
+				Action: tea.MouseActionPress,
+				Button: tea.MouseButtonLeft,
+			})
+			afterApp := model.(*App)
+
+			if cmd != nil {
+				t.Fatal("expected tree click to return nil command")
+			}
+			if afterApp.cursor != 1 {
+				t.Fatalf("expected row 1 to be selected, got cursor %d", afterApp.cursor)
+			}
+			if afterApp.focus != FocusTree {
+				t.Fatalf("expected focus to move to tree, got %v", afterApp.focus)
+			}
+		})
+	}
+}
+
+func TestPlainClickOnTreeRowSelectsCurrentFilteredViewModeRow(t *testing.T) {
+	app := pointerTestApp()
+	app.roots = mouseTreeNodes("ab-match-a", "ab-closed", "ab-match-c", "ab-hidden")
+	app.roots[0].Issue.Title = "match first"
+	app.roots[1].Issue.Title = "match closed"
+	app.roots[1].Issue.Status = "closed"
+	app.roots[2].Issue.Title = "match second"
+	app.roots[3].Issue.Title = "not included"
+	app.viewMode = ViewModeActive
+	app.setFilterText("match")
+	app.recalcVisibleRows()
+	app.recalcViewportSize()
+
+	model, cmd := app.Update(tea.MouseMsg{
+		X:      12,
+		Y:      3,
+		Action: tea.MouseActionPress,
+		Button: tea.MouseButtonLeft,
+	})
+	afterApp := model.(*App)
+
+	if cmd != nil {
+		t.Fatal("expected filtered tree click to return nil command")
+	}
+	if got := afterApp.visibleRows[afterApp.cursor].Node.Issue.ID; got != "ab-match-c" {
+		t.Fatalf("expected click to select second filtered active row, got %s", got)
+	}
+	if afterApp.detailIssueID != "ab-match-c" {
+		t.Fatalf("expected details to update to ab-match-c, got %s", afterApp.detailIssueID)
+	}
+}
+
 func TestWheelOverTreeScrollsTreeViewportWithoutChangingSelectionOrFocus(t *testing.T) {
 	app := pointerTreeScrollTestApp(12)
 	app.focus = FocusDetails
@@ -460,6 +731,21 @@ func pointerTreeScrollTestApp(count int) *App {
 	app := pointerTestApp()
 	app.roots = nodes
 	app.height = 10
+	app.recalcVisibleRows()
+	app.recalcViewportSize()
+	return app
+}
+
+func pointerExpandableTestApp() *App {
+	parent := &graph.Node{
+		Issue: beads.FullIssue{ID: "ab-parent", Title: "Parent", Status: "open"},
+		Children: []*graph.Node{
+			{Issue: beads.FullIssue{ID: "ab-child", Title: "Child", Status: "open"}},
+		},
+	}
+	sibling := &graph.Node{Issue: beads.FullIssue{ID: "ab-sibling", Title: "Sibling", Status: "open"}}
+	app := pointerTestApp()
+	app.roots = []*graph.Node{parent, sibling}
 	app.recalcVisibleRows()
 	app.recalcViewportSize()
 	return app
