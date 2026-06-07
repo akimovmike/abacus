@@ -7,6 +7,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.11.0] - 2026-06-06
+
 ### Added
 - **Mouse support**: Click to select tree rows, toggle expansion, scroll panes under the pointer, and dismiss overlays with backdrop click (ab-nzz6)
 - **Overlay mouse activation**: Click status and priority options directly instead of using hotkeys
