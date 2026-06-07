@@ -7,6 +7,16 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added
+- **Mouse support**: Click to select tree rows, toggle expansion, scroll panes under the pointer, and dismiss overlays with backdrop click (ab-nzz6)
+- **Overlay mouse activation**: Click status and priority options directly instead of using hotkeys
+- **Mouse help section**: Help overlay (`?`) now documents supported mouse interactions
+- **Pre-commit CI gate**: Local `make ci` target and tracked pre-commit hook run lint, tests, and build before each commit (ab-osz1)
+
+### Changed
+- **CI gates skip bead-only changes**: Commits that only touch `.beads/` files bypass CI checks for faster iteration
+- **Dependencies**: `charmbracelet/x/ansi` 0.11.6→0.11.7, `modernc.org/sqlite` 1.48.2→1.49.1, `golang.org/x/term` 0.41.0→0.42.0
+
 ## [0.10.1] - 2026-04-16
 
 ### Added
