@@ -118,14 +118,16 @@ func main() {
 	runtime.backend = detectedBackend
 
 	// Pass the existing startup display to runWithRuntime
-	if err := runWithRuntime(runtime, ui.NewApp, func(app *ui.App) programRunner {
-		return tea.NewProgram(app, tea.WithAltScreen())
-	}, func() startupAnimator {
+	if err := runWithRuntime(runtime, ui.NewApp, newInteractiveProgram, func() startupAnimator {
 		return startup
 	}); err != nil {
 		fmt.Fprintf(os.Stderr, "Error: %v\n", err)
 		os.Exit(1)
 	}
+}
+
+func newInteractiveProgram(app *ui.App) programRunner {
+	return tea.NewProgram(app, tea.WithAltScreen(), tea.WithMouseCellMotion())
 }
 
 type programRunner interface {

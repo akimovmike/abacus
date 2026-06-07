@@ -25,6 +25,11 @@ func (m *App) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		return m.handleKeyMsg(keyMsg)
 	}
 
+	if mouseMsg, ok := msg.(tea.MouseMsg); ok {
+		m.handleMouseMsg(mouseMsg)
+		return m, nil
+	}
+
 	// Viewport updates when detail pane is focused
 	if m.ShowDetails && m.focus == FocusDetails {
 		var cmd tea.Cmd

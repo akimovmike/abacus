@@ -2,6 +2,7 @@ package main
 
 import (
 	"errors"
+	"reflect"
 	"testing"
 	"time"
 
@@ -87,6 +88,33 @@ type noopProgram struct{}
 
 func (noopProgram) Run() (tea.Model, error) {
 	return nil, nil
+}
+
+func TestInteractiveProgramEnablesMouseCellMotion(t *testing.T) {
+	got := programStartupOptions(t, newInteractiveProgram(&ui.App{}))
+	want := programStartupOptions(t, tea.NewProgram(&ui.App{}, tea.WithAltScreen(), tea.WithMouseCellMotion()))
+	withoutMouse := programStartupOptions(t, tea.NewProgram(&ui.App{}, tea.WithAltScreen()))
+
+	if got != want {
+		t.Fatalf("startup options = %d, want %d", got, want)
+	}
+	if got == withoutMouse {
+		t.Fatal("expected interactive program options to include mouse cell motion")
+	}
+}
+
+func programStartupOptions(t *testing.T, runner programRunner) uint64 {
+	t.Helper()
+
+	value := reflect.ValueOf(runner)
+	if value.Kind() != reflect.Pointer {
+		t.Fatalf("expected pointer runner, got %T", runner)
+	}
+	field := value.Elem().FieldByName("startupOptions")
+	if !field.IsValid() {
+		t.Fatalf("runner %T has no startupOptions field", runner)
+	}
+	return uint64(field.Int())
 }
 
 func TestComputeRuntimeOptions_BackendFlag(t *testing.T) {
