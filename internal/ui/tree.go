@@ -37,7 +37,11 @@ func (m *App) renderTreeView() string {
 		return ""
 	}
 
-	m.ensureTreeSelectionVisible(listHeight, totalLines, cursorStart, cursorEnd)
+	if m.treeMouseScrolled {
+		m.clampTreeViewportTop(listHeight, totalLines)
+	} else {
+		m.ensureTreeSelectionVisible(listHeight, totalLines, cursorStart, cursorEnd)
+	}
 
 	maxTop := totalLines - listHeight
 	if maxTop < 0 {
@@ -187,18 +191,7 @@ func (m *App) buildTreeLines(totalWidth int) ([]string, int, int) {
 }
 
 func (m *App) ensureTreeSelectionVisible(listHeight, totalLines, cursorStart, cursorEnd int) {
-	if listHeight < 1 {
-		listHeight = 1
-	}
-	maxTop := totalLines - listHeight
-	if maxTop < 0 {
-		maxTop = 0
-	}
-	if m.treeTopLine < 0 {
-		m.treeTopLine = 0
-	} else if m.treeTopLine > maxTop {
-		m.treeTopLine = maxTop
-	}
+	m.clampTreeViewportTop(listHeight, totalLines)
 	if cursorStart < 0 {
 		return
 	}
@@ -221,12 +214,36 @@ func (m *App) ensureTreeSelectionVisible(listHeight, totalLines, cursorStart, cu
 		top = cursorBottom - (listHeight - 1 - margin)
 	}
 
-	if top < 0 {
-		top = 0
-	} else if top > maxTop {
-		top = maxTop
+	m.treeTopLine = m.clampedTreeViewportTop(top, listHeight, totalLines)
+}
+
+func (m *App) clampTreeViewportTop(listHeight, totalLines int) {
+	m.treeTopLine = m.clampedTreeViewportTop(m.treeTopLine, listHeight, totalLines)
+}
+
+func (m *App) prepareTreeKeyboardNavigation() {
+	if !m.treeMouseScrolled {
+		return
 	}
-	m.treeTopLine = top
+	m.treeMouseScrolled = false
+	m.ensureTreeSelectionVisible(m.treePaneHeight(), len(m.visibleRows), m.cursor, m.cursor+1)
+}
+
+func (m *App) clampedTreeViewportTop(top, listHeight, totalLines int) int {
+	if listHeight < 1 {
+		listHeight = 1
+	}
+	maxTop := totalLines - listHeight
+	if maxTop < 0 {
+		maxTop = 0
+	}
+	if top < 0 {
+		return 0
+	}
+	if top > maxTop {
+		return maxTop
+	}
+	return top
 }
 
 func truncateWithEllipsis(text string, maxWidth int) string {

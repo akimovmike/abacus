@@ -59,7 +59,52 @@ type pointerLayout struct {
 }
 
 func (m *App) handleMouseMsg(msg tea.MouseMsg) {
-	_, _ = m.pointerEventFromMouseMsg(msg)
+	event, ok := m.pointerEventFromMouseMsg(msg)
+	if !ok {
+		return
+	}
+
+	if event.target == pointerTargetDetails {
+		m.handleDetailsPointerEvent(event)
+		return
+	}
+	if event.target == pointerTargetTree {
+		m.handleTreePointerEvent(event)
+	}
+}
+
+func (m *App) handleDetailsPointerEvent(event pointerEvent) {
+	switch event.action {
+	case pointerActionPlainClick:
+		m.focus = FocusDetails
+	case pointerActionWheelUp:
+		m.viewport.ScrollUp(1)
+	case pointerActionWheelDown:
+		m.viewport.ScrollDown(1)
+	}
+}
+
+func (m *App) handleTreePointerEvent(event pointerEvent) {
+	switch event.action {
+	case pointerActionWheelUp:
+		m.scrollTreeViewportBy(-1)
+	case pointerActionWheelDown:
+		m.scrollTreeViewportBy(1)
+	}
+}
+
+func (m *App) scrollTreeViewportBy(delta int) {
+	maxTop := len(m.visibleRows) - m.treePaneHeight()
+	if maxTop < 0 {
+		maxTop = 0
+	}
+	m.treeTopLine += delta
+	if m.treeTopLine < 0 {
+		m.treeTopLine = 0
+	} else if m.treeTopLine > maxTop {
+		m.treeTopLine = maxTop
+	}
+	m.treeMouseScrolled = true
 }
 
 func (m *App) pointerEventFromMouseMsg(msg tea.MouseMsg) (pointerEvent, bool) {

@@ -146,6 +146,9 @@ func (m *App) applyRefresh(newRoots []*graph.Node, newDigest map[string]string, 
 	} else {
 		m.detailIssueID = ""
 	}
+	if m.treeMouseScrolled {
+		m.restoreTreeViewportTop(state)
+	}
 
 	if m.ShowDetails {
 		m.focus = state.focus
@@ -160,6 +163,18 @@ func (m *App) applyRefresh(newRoots []*graph.Node, newDigest map[string]string, 
 
 	m.lastRefreshStats = computeDiffStats(oldDigest, newDigest)
 	m.lastRefreshTime = time.Now()
+}
+
+func (m *App) restoreTreeViewportTop(state viewState) {
+	if state.treeTopRowKey != "" {
+		for idx, row := range m.visibleRows {
+			if treeRowIdentity(row) == state.treeTopRowKey {
+				m.treeTopLine = idx
+				return
+			}
+		}
+	}
+	m.treeTopLine = m.clampedTreeViewportTop(state.treeTopLine, m.treePaneHeight(), len(m.visibleRows))
 }
 
 // eventualRefreshMsg is sent after a delay to trigger a background consistency refresh.

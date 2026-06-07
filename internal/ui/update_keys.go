@@ -155,26 +155,32 @@ func (m *App) handleGlobalKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 			return m, refreshCmd
 		}
 	case key.Matches(msg, m.keys.Down):
+		m.prepareTreeKeyboardNavigation()
 		m.cursor++
 		m.clampCursor()
 		m.updateViewportContent()
 	case key.Matches(msg, m.keys.Up):
+		m.prepareTreeKeyboardNavigation()
 		m.cursor--
 		m.clampCursor()
 		m.updateViewportContent()
 	case key.Matches(msg, m.keys.Home):
+		m.prepareTreeKeyboardNavigation()
 		m.cursor = 0
 		m.clampCursor()
 		m.updateViewportContent()
 	case key.Matches(msg, m.keys.End):
+		m.prepareTreeKeyboardNavigation()
 		m.cursor = len(m.visibleRows) - 1
 		m.clampCursor()
 		m.updateViewportContent()
 	case key.Matches(msg, m.keys.PageDown):
+		m.prepareTreeKeyboardNavigation()
 		m.cursor += clampDimension(m.viewport.Height, 1, len(m.visibleRows))
 		m.clampCursor()
 		m.updateViewportContent()
 	case key.Matches(msg, m.keys.PageUp):
+		m.prepareTreeKeyboardNavigation()
 		m.cursor -= clampDimension(m.viewport.Height, 1, len(m.visibleRows))
 		m.clampCursor()
 		m.updateViewportContent()

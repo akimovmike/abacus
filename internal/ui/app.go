@@ -107,11 +107,12 @@ const (
 
 // App implements the Bubble Tea model for Abacus.
 type App struct {
-	roots       []*graph.Node
-	visibleRows []graph.TreeRow
-	cursor      int
-	treeTopLine int
-	repoName    string
+	roots             []*graph.Node
+	visibleRows       []graph.TreeRow
+	cursor            int
+	treeTopLine       int
+	treeMouseScrolled bool
+	repoName          string
 
 	viewport      viewport.Model
 	ShowDetails   bool

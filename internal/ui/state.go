@@ -30,6 +30,8 @@ type viewState struct {
 	filterForcedExpanded map[string]bool
 	viewportYOffset      int
 	cursorIndex          int
+	treeTopLine          int
+	treeTopRowKey        string
 	focus                FocusArea
 	viewMode             ViewMode
 }
@@ -125,6 +127,7 @@ func (m *App) captureState() viewState {
 	state := viewState{
 		filterText:           m.filterText,
 		cursorIndex:          m.cursor,
+		treeTopLine:          m.treeTopLine,
 		expandedIDs:          m.collectExpandedIDs(),
 		expandedInstances:    copyBoolMapAll(m.expandedInstances),
 		filterCollapsed:      copyBoolMap(m.filterCollapsed),
@@ -139,6 +142,9 @@ func (m *App) captureState() viewState {
 
 	if len(m.visibleRows) > 0 && m.cursor >= 0 && m.cursor < len(m.visibleRows) {
 		state.currentID = m.visibleRows[m.cursor].Node.Issue.ID
+	}
+	if len(m.visibleRows) > 0 && m.treeTopLine >= 0 && m.treeTopLine < len(m.visibleRows) {
+		state.treeTopRowKey = treeRowIdentity(m.visibleRows[m.treeTopLine])
 	}
 	return state
 }
@@ -227,4 +233,12 @@ func (m *App) restoreCursorToID(id string) {
 	}
 	m.cursor = prev
 	m.clampCursor()
+}
+
+func treeRowIdentity(row graph.TreeRow) string {
+	parentID := ""
+	if row.Parent != nil {
+		parentID = row.Parent.Issue.ID
+	}
+	return parentID + "\x00" + row.Node.Issue.ID
 }
