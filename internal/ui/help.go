@@ -12,6 +12,8 @@ type helpSection struct {
 	rows  [][]string // Each row: [keys, description]
 }
 
+const helpKeyColumnWidth = 16
+
 // getHelpSections returns the help content organized into sections.
 // Layout is explicit - each section lists which bindings appear in which order.
 // Text is derived from binding.Help() to maintain single source of truth.
@@ -64,6 +66,14 @@ func getHelpSections(keys KeyMap) []helpSection {
 				{keys.Escape.Help().Key, keys.Escape.Help().Desc},
 			},
 		},
+		{
+			title: "MOUSE",
+			rows: [][]string{
+				{"Click", "Select/focus"},
+				{"Wheel", "Scroll hovered pane"},
+				{"Backdrop click", "Cancel/close overlay"},
+			},
+		},
 	}
 }
 
@@ -83,6 +93,8 @@ func renderHelpOverlay(keys KeyMap) string {
 		renderHelpSectionTable(sections[2]),
 		"",
 		renderHelpSectionTable(sections[3]),
+		"",
+		renderHelpSectionTable(sections[4]),
 	)
 
 	// Join columns horizontally with spacing
@@ -140,7 +152,7 @@ func renderHelpSectionTable(section helpSection) string {
 	// Build rows manually to avoid table border spacing issues
 	var rowStrings []string
 	for _, row := range section.rows {
-		key := styleHelpKey().Width(14).Render(row[0])
+		key := styleHelpKey().Width(helpKeyColumnWidth).Render(row[0])
 		desc := styleHelpDesc().Render(row[1])
 		rowStrings = append(rowStrings, key+desc)
 	}

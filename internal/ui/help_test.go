@@ -1,6 +1,7 @@
 package ui
 
 import (
+	"regexp"
 	"strings"
 	"testing"
 )
@@ -19,7 +20,7 @@ func TestRenderHelpOverlay(t *testing.T) {
 	})
 
 	t.Run("ContainsAllSections", func(t *testing.T) {
-		sections := []string{"NAVIGATION", "ACTIONS", "BEAD ACTIONS", "SEARCH"}
+		sections := []string{"NAVIGATION", "ACTIONS", "BEAD ACTIONS", "SEARCH", "MOUSE"}
 		for _, section := range sections {
 			if !strings.Contains(overlay, section) {
 				t.Errorf("expected overlay to contain section %q", section)
@@ -47,18 +48,37 @@ func TestRenderHelpOverlay(t *testing.T) {
 	})
 }
 
+func TestHelpOverlayDocumentsFirstPassMouseBehavior(t *testing.T) {
+	overlay := renderHelpOverlay(DefaultKeyMap())
+
+	want := []string{
+		"MOUSE",
+		"Click",
+		"Select/focus",
+		"Wheel",
+		"Scroll hovered pane",
+		"Backdrop click",
+		"Cancel/close overlay",
+	}
+	for _, text := range want {
+		if !strings.Contains(overlay, text) {
+			t.Errorf("expected help overlay to contain %q", text)
+		}
+	}
+}
+
 func TestGetHelpSections(t *testing.T) {
 	keys := DefaultKeyMap()
 	sections := getHelpSections(keys)
 
-	t.Run("ReturnsFourSections", func(t *testing.T) {
-		if len(sections) != 4 {
-			t.Errorf("expected 4 sections, got %d", len(sections))
+	t.Run("ReturnsFiveSections", func(t *testing.T) {
+		if len(sections) != 5 {
+			t.Errorf("expected 5 sections, got %d", len(sections))
 		}
 	})
 
 	t.Run("SectionTitles", func(t *testing.T) {
-		expected := []string{"NAVIGATION", "ACTIONS", "BEAD ACTIONS", "SEARCH"}
+		expected := []string{"NAVIGATION", "ACTIONS", "BEAD ACTIONS", "SEARCH", "MOUSE"}
 		for i, section := range sections {
 			if section.title != expected[i] {
 				t.Errorf("section %d: expected title %q, got %q", i, expected[i], section.title)
@@ -87,6 +107,12 @@ func TestGetHelpSections(t *testing.T) {
 	t.Run("SearchHas3Rows", func(t *testing.T) {
 		if len(sections[3].rows) != 3 {
 			t.Errorf("Search section: expected 3 rows, got %d", len(sections[3].rows))
+		}
+	})
+
+	t.Run("MouseHas3Rows", func(t *testing.T) {
+		if len(sections[4].rows) != 3 {
+			t.Errorf("Mouse section: expected 3 rows, got %d", len(sections[4].rows))
 		}
 	})
 
@@ -143,6 +169,20 @@ func TestRenderHelpSectionTable(t *testing.T) {
 			t.Error("expected rendered section to contain 'desc2'")
 		}
 	})
+}
+
+func TestRenderHelpSectionTableSeparatesLongKeysFromDescriptions(t *testing.T) {
+	section := helpSection{
+		title: "MOUSE",
+		rows: [][]string{
+			{"Backdrop click", "Cancel/close overlay"},
+		},
+	}
+
+	plain := stripANSI(renderHelpSectionTable(section))
+	if !regexp.MustCompile(`Backdrop click\s+Cancel/close overlay`).MatchString(plain) {
+		t.Fatalf("expected long key label to be separated from description, got:\n%s", plain)
+	}
 }
 
 func TestHelpOverlayDimensions(t *testing.T) {

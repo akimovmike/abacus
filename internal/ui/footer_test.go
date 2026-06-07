@@ -66,6 +66,22 @@ func TestRenderFooter(t *testing.T) {
 	})
 }
 
+func TestRenderFooterKeepsMouseOutOfKeyboardHints(t *testing.T) {
+	m := &App{
+		width:    200,
+		repoName: "abacus",
+		focus:    FocusTree,
+	}
+
+	footer := m.renderFooter()
+	mouseHints := []string{"Mouse", "Click", "Wheel", "hover"}
+	for _, hint := range mouseHints {
+		if strings.Contains(footer, hint) {
+			t.Errorf("expected footer not to contain mouse hint %q, got %q", hint, footer)
+		}
+	}
+}
+
 func TestRenderFooterDetailsFocus(t *testing.T) {
 	m := &App{
 		width:       200, // Wider to accommodate 12 global + 1 context hint
