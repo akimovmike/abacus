@@ -11,7 +11,7 @@ BUILDTIME ?= $(shell date -u '+%Y-%m-%d_%H:%M:%S')
 # Linker flags for version injection
 LDFLAGS := -X main.Version=$(VERSION) -X main.Build=$(BUILD) -X main.BuildTime=$(BUILDTIME)
 
-.PHONY: help build test test-verbose test-integration test-all bench install lint clean check check-verbose check-test
+.PHONY: help build test test-verbose test-integration test-all bench install lint clean check check-verbose check-test ci install-hooks
 
 help: ## Display available make targets
 	@awk 'BEGIN {FS=":.*##"; printf "\nUsage: make <target>\n\nTargets:\n"} /^[a-zA-Z0-9_\-]+:.*##/ {printf "  %-12s %s\n", $$1, $$2}' $(MAKEFILE_LIST)
@@ -80,6 +80,15 @@ test-all: ## Run all tests (unit + integration)
 check-test: ## Run all checks and tests
 	@$(MAKE) check
 	@$(MAKE) test
+
+ci: ## Run the same local gates as GitHub Actions CI
+	@$(MAKE) lint
+	@$(MAKE) test
+	@$(MAKE) test-integration
+	@$(MAKE) build
+
+install-hooks: ## Configure Git to use tracked hooks from .githooks/
+	git config core.hooksPath .githooks
 
 ## Other targets
 

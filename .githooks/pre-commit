@@ -1,0 +1,20 @@
+#!/usr/bin/env sh
+set -eu
+
+if ! command -v make >/dev/null 2>&1; then
+  echo "pre-commit: make is required to run CI gates" >&2
+  exit 1
+fi
+
+echo "pre-commit: running local CI gates (make ci)"
+before_status=$(git status --porcelain=v1)
+make ci
+
+after_status=$(git status --porcelain=v1)
+if [ "$after_status" != "$before_status" ]; then
+	echo "pre-commit: checks modified tracked files; review and stage those changes, then commit again" >&2
+	git status --short
+	exit 1
+fi
+
+echo "pre-commit: local CI gates passed"

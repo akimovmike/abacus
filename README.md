@@ -387,6 +387,12 @@ make test
 # Run linter
 make lint
 
+# Install the tracked pre-commit hook
+make install-hooks
+
+# Run the local CI gate used by the pre-commit hook
+make ci
+
 # Build
 make build
 ```

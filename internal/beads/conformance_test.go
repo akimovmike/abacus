@@ -12,6 +12,7 @@ package beads
 import (
 	"encoding/json"
 	"os/exec"
+	"reflect"
 	"strings"
 	"testing"
 )
@@ -87,16 +88,9 @@ func TestOutputConformance_List(t *testing.T) {
 		t.Fatalf("bd list --json failed: %v", err)
 	}
 
-	// Parse JSON outputs
-	var brIssues []map[string]interface{}
-	if err := json.Unmarshal(brOut, &brIssues); err != nil {
-		t.Fatalf("Failed to parse br list output: %v\nOutput: %s", err, brOut)
-	}
-
-	var bdIssues []map[string]interface{}
-	if err := json.Unmarshal(bdOut, &bdIssues); err != nil {
-		t.Fatalf("Failed to parse bd list output: %v\nOutput: %s", err, bdOut)
-	}
+	// Parse JSON outputs. bd returns an array; current br returns a paginated object.
+	brIssues := parseListIssues(t, "br", brOut)
+	bdIssues := parseListIssues(t, "bd", bdOut)
 
 	// Verify same number of issues
 	if len(brIssues) != len(bdIssues) {
@@ -125,6 +119,59 @@ func TestOutputConformance_List(t *testing.T) {
 	}
 
 	t.Log("Output conformance test passed: both backends produce compatible list output")
+}
+
+func TestParseListIssuesAcceptsArrayAndPaginatedObject(t *testing.T) {
+	want := []map[string]interface{}{
+		{
+			"id":    "ab-123",
+			"title": "test issue",
+		},
+	}
+
+	tests := []struct {
+		name string
+		in   string
+	}{
+		{
+			name: "array",
+			in:   `[{"id":"ab-123","title":"test issue"}]`,
+		},
+		{
+			name: "paginated object",
+			in:   `{"issues":[{"id":"ab-123","title":"test issue"}],"total":1,"limit":50,"offset":0,"has_more":false}`,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			got := parseListIssues(t, tt.name, []byte(tt.in))
+			if !reflect.DeepEqual(got, want) {
+				t.Fatalf("parseListIssues() = %#v, want %#v", got, want)
+			}
+		})
+	}
+}
+
+func parseListIssues(t *testing.T, backend string, out []byte) []map[string]interface{} {
+	t.Helper()
+
+	var issues []map[string]interface{}
+	if err := json.Unmarshal(out, &issues); err == nil {
+		return issues
+	}
+
+	var page struct {
+		Issues []map[string]interface{} `json:"issues"`
+	}
+	if err := json.Unmarshal(out, &page); err != nil {
+		t.Fatalf("Failed to parse %s list output: %v\nOutput: %s", backend, err, out)
+	}
+	if page.Issues == nil {
+		t.Fatalf("Failed to parse %s list output: missing issues field\nOutput: %s", backend, out)
+	}
+
+	return page.Issues
 }
 
 // TestOutputConformance_Show verifies that bd show --json and br show --json
