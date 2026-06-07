@@ -6,6 +6,14 @@ if ! command -v make >/dev/null 2>&1; then
   exit 1
 fi
 
+staged_files=$(git diff --cached --name-only)
+non_beads_files=$(printf '%s\n' "$staged_files" | grep -v '^\.beads/' || true)
+
+if [ -z "$non_beads_files" ]; then
+	echo "pre-commit: skipping local CI gates for bead-only changes"
+	exit 0
+fi
+
 echo "pre-commit: running local CI gates (make ci)"
 before_status=$(git status --porcelain=v1)
 make ci
