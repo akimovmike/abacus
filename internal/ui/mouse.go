@@ -62,19 +62,76 @@ type pointerLayout struct {
 	overlayActive  bool
 }
 
-func (m *App) handleMouseMsg(msg tea.MouseMsg) {
+func (m *App) handleMouseMsg(msg tea.MouseMsg) tea.Cmd {
 	event, ok := m.pointerEventFromMouseMsg(msg)
 	if !ok {
-		return
+		return nil
+	}
+
+	if event.target == pointerTargetBackdrop {
+		return m.handleBackdropPointerEvent(event)
+	}
+	if event.target == pointerTargetOverlay {
+		return m.handleOverlayPointerEvent(event)
 	}
 
 	if event.target == pointerTargetDetails {
 		m.handleDetailsPointerEvent(event)
-		return
+		return nil
 	}
 	if event.target == pointerTargetTree {
 		m.handleTreePointerEvent(event)
 	}
+	return nil
+}
+
+func (m *App) handleBackdropPointerEvent(event pointerEvent) tea.Cmd {
+	if event.action != pointerActionPlainClick {
+		return nil
+	}
+	if m.showHelp {
+		m.showHelp = false
+		return nil
+	}
+	cmd, _ := m.delegateToOverlay(tea.KeyMsg{Type: tea.KeyEsc})
+	return cmd
+}
+
+func (m *App) handleOverlayPointerEvent(event pointerEvent) tea.Cmd {
+	if event.action != pointerActionPlainClick {
+		return nil
+	}
+	if m.activeOverlay == OverlayStatus && m.statusOverlay != nil {
+		optionIndex, ok := m.overlayChoiceOptionIndexAtPointer(event, len(m.statusOverlay.options))
+		if !ok {
+			return nil
+		}
+		return m.statusOverlay.selectByValue(m.statusOverlay.options[optionIndex].value)
+	}
+	if m.activeOverlay == OverlayPriority && m.priorityOverlay != nil {
+		optionIndex, ok := m.overlayChoiceOptionIndexAtPointer(event, len(m.priorityOverlay.options))
+		if !ok {
+			return nil
+		}
+		return m.priorityOverlay.selectByValue(m.priorityOverlay.options[optionIndex].value)
+	}
+	return nil
+}
+
+func (m *App) overlayChoiceOptionIndexAtPointer(event pointerEvent, optionCount int) (int, bool) {
+	const optionStartY = 4
+
+	surface := m.pointerLayout().overlaySurface
+	relativeX := event.x - surface.x
+	if relativeX <= 0 || relativeX >= surface.width-1 {
+		return 0, false
+	}
+	relativeY := event.y - surface.y
+	optionIndex := relativeY - optionStartY
+	if optionIndex < 0 || optionIndex >= optionCount {
+		return 0, false
+	}
+	return optionIndex, true
 }
 
 func (m *App) handleDetailsPointerEvent(event pointerEvent) {
