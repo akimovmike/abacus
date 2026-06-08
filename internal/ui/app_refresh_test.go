@@ -172,6 +172,61 @@ func TestAppRefreshWithMockClient(t *testing.T) {
 	}
 }
 
+func TestRefreshSkipsBackgroundFetchForExportedComments(t *testing.T) {
+	exportedComments := []beads.Comment{
+		{ID: 1, IssueID: "ab-001", Author: "tester", Text: "from export", CreatedAt: "2024-01-01T00:00:00Z"},
+	}
+	mock := beads.NewMockClient()
+	mock.ExportFn = func(ctx context.Context) ([]beads.FullIssue, error) {
+		return []beads.FullIssue{
+			{
+				ID:        "ab-001",
+				Title:     "Issue with exported comments",
+				Status:    "open",
+				CreatedAt: "2024-01-01T00:00:00Z",
+				UpdatedAt: "2024-01-01T00:00:00Z",
+				Comments:  exportedComments,
+			},
+		}, nil
+	}
+	mock.CommentsFn = func(ctx context.Context, issueID string) ([]beads.Comment, error) {
+		return []beads.Comment{
+			{ID: 2, IssueID: issueID, Author: "tester", Text: "redundant fetch", CreatedAt: "2024-01-02T00:00:00Z"},
+		}, nil
+	}
+
+	msg := extractRefreshMsg(t, refreshDataCmd(mock, time.Now()))
+	if msg.err != nil {
+		t.Fatalf("refreshDataCmd returned error: %v", msg.err)
+	}
+	if len(msg.roots) != 1 {
+		t.Fatalf("expected 1 root, got %d", len(msg.roots))
+	}
+
+	app := &App{
+		roots:       msg.roots,
+		visibleRows: nodesToRows(msg.roots[0]),
+		client:      mock,
+		cursor:      0,
+	}
+	batch, ok := app.loadCommentsInBackground()().(commentBatchLoadedMsg)
+	if !ok {
+		t.Fatalf("expected commentBatchLoadedMsg")
+	}
+	if len(batch.results) != 0 {
+		t.Fatalf("expected no background comment fetches, got %d", len(batch.results))
+	}
+	if mock.CommentsCallCount != 0 {
+		t.Fatalf("expected Comments not to be called, got %d calls", mock.CommentsCallCount)
+	}
+	if !msg.roots[0].CommentsLoaded {
+		t.Fatalf("expected exported comments to mark node loaded")
+	}
+	if got := msg.roots[0].Issue.Comments[0].Text; got != "from export" {
+		t.Fatalf("expected exported comment to be preserved, got %q", got)
+	}
+}
+
 func TestNewAppCapturesClientError(t *testing.T) {
 	mock := beads.NewMockClient()
 	mock.ExportFn = func(ctx context.Context) ([]beads.FullIssue, error) {
@@ -239,6 +294,25 @@ func TestCheckDBForChangesDetectsWalModification(t *testing.T) {
 
 	if cmd := app.checkDBForChanges(); cmd == nil {
 		t.Fatalf("expected refresh command after wal modification")
+	}
+}
+
+func TestCheckDBForChangesIgnoresShmModification(t *testing.T) {
+	dbFile := createTempDBFile(t)
+	app := &App{
+		client:        beads.NewMockClient(),
+		dbPath:        dbFile,
+		lastDBModTime: fileModTime(t, dbFile),
+	}
+
+	time.Sleep(10 * time.Millisecond)
+	shmPath := dbFile + "-shm"
+	if err := os.WriteFile(shmPath, []byte("read snapshot update"), 0o644); err != nil {
+		t.Fatalf("write shm: %v", err)
+	}
+
+	if cmd := app.checkDBForChanges(); cmd != nil {
+		t.Fatalf("expected no refresh command after shm-only modification")
 	}
 }
 

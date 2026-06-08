@@ -39,6 +39,10 @@ func collectCommentNodes(roots []*graph.Node, priorityIDs []string) []*graph.Nod
 			if n == nil {
 				continue
 			}
+			if !needsCommentFetch(n) {
+				walk(n.Children)
+				continue
+			}
 			if seen[n.Issue.ID] {
 				continue
 			}
@@ -66,7 +70,7 @@ func collectCommentNodes(roots []*graph.Node, priorityIDs []string) []*graph.Nod
 				if n == nil {
 					continue
 				}
-				if n.Issue.ID == id {
+				if n.Issue.ID == id && needsCommentFetch(n) {
 					return n
 				}
 				if found := find(n.Children); found != nil {
@@ -84,6 +88,26 @@ func collectCommentNodes(roots []*graph.Node, priorityIDs []string) []*graph.Nod
 	// Append the remaining (non-priority) traversal order.
 	prepended = append(prepended, ordered...)
 	return prepended
+}
+
+func needsCommentFetch(node *graph.Node) bool {
+	return node != nil && !node.CommentsLoaded
+}
+
+func markExportedCommentsLoaded(roots []*graph.Node) {
+	var walk func([]*graph.Node)
+	walk = func(nodes []*graph.Node) {
+		for _, n := range nodes {
+			if n == nil {
+				continue
+			}
+			if n.Issue.Comments != nil {
+				n.CommentsLoaded = true
+			}
+			walk(n.Children)
+		}
+	}
+	walk(roots)
 }
 
 func preloadAllComments(ctx context.Context, client beads.Client, roots []*graph.Node, reporter StartupReporter) {
@@ -171,6 +195,7 @@ func loadData(ctx context.Context, client beads.Client, reporter StartupReporter
 	if err != nil {
 		return nil, err
 	}
+	markExportedCommentsLoaded(roots)
 	// Roots are already sorted by graph.Builder using SortPriority/SortTimestamp.
 	// Apply additional ranking to bubble up HasInProgress and HasReady roots.
 	sort.SliceStable(roots, func(i, j int) bool {

@@ -32,6 +32,7 @@ func refreshDataCmd(client beads.Client, targetModTime time.Time) tea.Cmd {
 		if err != nil {
 			return refreshCompleteMsg{err: err}
 		}
+		markExportedCommentsLoaded(roots)
 
 		return refreshCompleteMsg{
 			roots:     roots,
@@ -92,7 +93,7 @@ func latestModTimeForDB(dbPath string) (time.Time, error) {
 		return time.Time{}, err
 	}
 	latest := info.ModTime()
-	for _, path := range []string{dbPath + "-wal", dbPath + "-shm"} {
+	for _, path := range []string{dbPath + "-wal"} {
 		if modTime, err := optionalModTime(path); err != nil {
 			return time.Time{}, err
 		} else if modTime.After(latest) {
@@ -305,6 +306,10 @@ func transferCommentState(roots []*graph.Node, state map[string]commentState) {
 	var walk func([]*graph.Node)
 	walk = func(nodes []*graph.Node) {
 		for _, n := range nodes {
+			if n.CommentsLoaded && n.Issue.Comments != nil {
+				walk(n.Children)
+				continue
+			}
 			if cs, ok := state[n.Issue.ID]; ok {
 				n.Issue.Comments = cs.comments
 				n.CommentsLoaded = cs.commentsLoaded

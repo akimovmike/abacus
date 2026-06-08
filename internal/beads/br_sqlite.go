@@ -74,7 +74,7 @@ func deriveWorkDirFromDBPath(dbPath string) string {
 	return ""
 }
 
-// buildSQLiteDSN returns a read-only WAL SQLite URI for the given path.
+// buildSQLiteDSN returns a read-only SQLite URI for the given path.
 //
 // The URI uses the "file:<path>?..." form (no authority component) so that
 // Windows drive letters (e.g. C:/...) are not misinterpreted as network hosts
@@ -86,10 +86,9 @@ func buildSQLiteDSN(dbPath string) string {
 	escapedPath := (&url.URL{Path: slashed}).EscapedPath()
 	q := url.Values{}
 	q.Set("mode", "ro")
-	q.Set("_journal_mode", "WAL")
-	q.Set("_busy_timeout", "3000")
-	q.Set("_foreign_keys", "on")
-	q.Set("cache", "shared")
+	q.Add("_pragma", "busy_timeout(30000)")
+	q.Add("_pragma", "query_only(ON)")
+	q.Add("_pragma", "foreign_keys(ON)")
 	if strings.HasPrefix(escapedPath, "//") {
 		// UNC path: prepend "//" so the total prefix is "file:////" as required.
 		return "file://" + escapedPath + "?" + q.Encode()

@@ -152,6 +152,34 @@ func TestTransferCommentState(t *testing.T) {
 	}
 }
 
+func TestTransferCommentStateKeepsFreshExportedComments(t *testing.T) {
+	oldState := map[string]commentState{
+		"ab-001": {
+			comments:       []beads.Comment{{ID: 1, Text: "old comment"}},
+			commentsLoaded: true,
+		},
+	}
+	newRoots := []*graph.Node{
+		{
+			Issue: beads.FullIssue{
+				ID:       "ab-001",
+				Title:    "Issue 1",
+				Comments: []beads.Comment{{ID: 2, Text: "fresh export comment"}},
+			},
+			CommentsLoaded: true,
+		},
+	}
+
+	transferCommentState(newRoots, oldState)
+
+	if len(newRoots[0].Issue.Comments) != 1 {
+		t.Fatalf("expected 1 fresh comment, got %d", len(newRoots[0].Issue.Comments))
+	}
+	if got := newRoots[0].Issue.Comments[0].Text; got != "fresh export comment" {
+		t.Fatalf("expected fresh export comment to win, got %q", got)
+	}
+}
+
 func TestCommentStatePreservedAcrossRefresh(t *testing.T) {
 	// Simulate a full refresh cycle - this is an integration test of the
 	// collect -> transfer flow that happens in applyRefresh
