@@ -46,7 +46,7 @@ check-verbose: ## Run checks with verbose output
 
 test: ## Run unit tests only (quiet output, excludes integration tests)
 	@if [ -n "$$VERBOSE" ]; then \
-		$(GO) test -v ./...; \
+		$(GO) test -short -v ./...; \
 	else \
 		$(MAKE) test-quiet; \
 	fi
@@ -54,7 +54,7 @@ test: ## Run unit tests only (quiet output, excludes integration tests)
 test-quiet:
 	@. ./hack/run_silent.sh && print_main_header "Running Tests"
 	@. ./hack/run_silent.sh && print_header "abacus" "Unit tests"
-	@. ./hack/run_silent.sh && run_silent_with_test_count "Unit tests passed" "$(GO) test -json ./..." "go"
+	@. ./hack/run_silent.sh && run_silent_with_test_count "Unit tests passed" "$(GO) test -short -json ./..." "go"
 
 test-verbose: ## Run unit tests with verbose output
 	@VERBOSE=1 $(MAKE) test
