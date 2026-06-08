@@ -208,7 +208,7 @@ Common pitfalls
 
 ## Landing the Plane (Session Completion)
 
-**When ending a work session**, you MUST complete ALL steps below. Work is NOT complete until `git push` succeeds.
+**When ending a code-change work session**, you MUST complete ALL steps below. Work is NOT complete until `git push` succeeds.
 
 **MANDATORY WORKFLOW:**
 
@@ -234,11 +234,15 @@ Common pitfalls
 - After a subagent worktree pushes, run `git pull` in the parent session immediately
 - At session end, `git status` MUST show no untracked files — commit them, confirm gitignored, or ask to delete
 
+Bead-only tracking requests are lighter: create/update the bead, run `br sync --flush-only`, report the bead ID. Do not run help/label discovery or commit/push unless needed or asked.
+
 ---
 
 ## Issue Tracking with Beads
 
 We use beads for issue tracking and work planning. If you need more information, execute `br --help`
+
+For a simple "create a bead" request, use one `br create ...` command with known labels/fields, then `br sync --flush-only`. Avoid exploratory commands unless required.
 
 **IMPORTANT**: Beads (`br` CLI) is a third-party tool we do not maintain. Do not propose changes to the beads codebase. The beads source may be in a sibling folder for reference, but we cannot modify it.
 
