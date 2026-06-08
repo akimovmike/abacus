@@ -7,6 +7,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.11.1] - 2026-06-08
+
 ### Fixed
 - Fix idle multi-instance SQLite lock errors from background refresh loop (ab-nr68)
 
