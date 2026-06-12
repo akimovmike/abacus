@@ -810,7 +810,13 @@ type brTestEnv struct {
 func setupBrTestDB(t *testing.T) brTestEnv {
 	t.Helper()
 
-	dir := t.TempDir()
+	// Resolve symlinks: br 0.2.x rejects paths where a component is a symlink
+	// pointing outside the project root. On macOS, t.TempDir() returns
+	// /var/folders/... which is a symlink to /private/var/folders/...
+	dir, err := filepath.EvalSymlinks(t.TempDir())
+	if err != nil {
+		t.Fatalf("resolve temp dir symlinks: %v", err)
+	}
 	// br init ignores --db flag and always creates .beads/beads.db in cwd
 	beadsDir := filepath.Join(dir, ".beads")
 	dbPath := filepath.Join(beadsDir, "beads.db")

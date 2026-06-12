@@ -37,7 +37,13 @@ func skipIfNoBackend(t *testing.T, backend string) string {
 func setupBackendTestDB(t *testing.T, backend string) backendTestEnv {
 	t.Helper()
 
-	dir := t.TempDir()
+	// Resolve symlinks so br's symlink security check doesn't reject the path.
+	// On macOS, os.TempDir() returns /var/folders/... which is a symlink to
+	// /private/var/folders/...; br 0.2.x rejects paths with out-of-tree symlinks.
+	dir, err := filepath.EvalSymlinks(t.TempDir())
+	if err != nil {
+		t.Fatalf("resolve temp dir symlinks: %v", err)
+	}
 	beadsDir := filepath.Join(dir, ".beads")
 	dbPath := filepath.Join(beadsDir, "beads.db")
 
