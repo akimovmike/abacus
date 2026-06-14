@@ -42,10 +42,8 @@ type ColumnsOverlay struct {
 	editingLabelIndex int
 	replaceNameOnEdit bool
 	displayNameInput  textinput.Model
+	closed            bool
 }
-
-// ColumnsClosedMsg is sent when the columns overlay is dismissed.
-type ColumnsClosedMsg struct{}
 
 type columnsOverlayConfig struct {
 	showColumns  bool
@@ -90,7 +88,8 @@ func (m *ColumnsOverlay) Update(msg tea.Msg) (*ColumnsOverlay, tea.Cmd) {
 
 	switch {
 	case key.Matches(keyMsg, key.NewBinding(key.WithKeys("esc"))):
-		return m, func() tea.Msg { return ColumnsClosedMsg{} }
+		m.closed = true
+		return m, nil
 	case key.Matches(keyMsg, key.NewBinding(key.WithKeys("enter"))):
 		if m.currentRow().kind == columnOverlayRowAdd {
 			m.startAddingLabel()
@@ -121,7 +120,9 @@ func (m *ColumnsOverlay) updateEditingLabel(msg tea.Msg) (*ColumnsOverlay, tea.C
 			m.commitDisplayNameEdit()
 			return m, nil
 		case key.Matches(msg, key.NewBinding(key.WithKeys("esc"))):
-			return m, func() tea.Msg { return ColumnsClosedMsg{} }
+			m.editingLabel = false
+			m.replaceNameOnEdit = false
+			return m, nil
 		}
 		if m.replaceNameOnEdit {
 			m.prepareSelectedNameForInput(msg)
@@ -145,7 +146,8 @@ func (m *ColumnsOverlay) updateAddingLabel(msg tea.Msg) (*ColumnsOverlay, tea.Cm
 		return m, nil
 	case tea.KeyMsg:
 		if key.Matches(msg, key.NewBinding(key.WithKeys("esc"))) {
-			return m, func() tea.Msg { return ColumnsClosedMsg{} }
+			m.addingLabel = false
+			return m, nil
 		}
 	}
 	var cmd tea.Cmd
@@ -354,21 +356,30 @@ func (m *ColumnsOverlay) renderRow(row columnOverlayRow) string {
 		return styleHelpKey().Render("+") + styleHelpDesc().Render(" Add label column...")
 	}
 	if m.editingLabel && row.kind == columnOverlayRowLabel && row.index == m.editingLabelIndex {
-		return styleHelpKey().Render("[x]") + " " + m.displayNameInput.View()
+		return styleHelpKey().Render("[x]") + " " +
+			renderPillChip(row.label, chipStateNormal) +
+			styleStatsDim().Render(" → ") +
+			m.displayNameInput.View()
 	}
 	checked := "[ ]"
 	if row.enabled {
 		checked = "[x]"
 	}
-	label := row.label
-	if row.kind == columnOverlayRowLabel && row.displayName != "" {
-		label = row.displayName + "  " + styleStatsDim().Render(row.label)
+	if row.kind == columnOverlayRowLabel {
+		style := styleHelpDesc()
+		if !m.showColumns {
+			style = styleStatsDim()
+		}
+		return styleHelpKey().Render(checked) + " " +
+			renderPillChip(row.label, chipStateNormal) +
+			styleStatsDim().Render(" → ") +
+			style.Render("["+row.displayName+"]")
 	}
 	style := styleHelpDesc()
 	if !m.showColumns && row.kind != columnOverlayRowMaster {
 		style = styleStatsDim()
 	}
-	return styleHelpKey().Render(checked) + style.Render(" "+label)
+	return styleHelpKey().Render(checked) + style.Render(" "+row.label)
 }
 
 func (m *ColumnsOverlay) rows() []columnOverlayRow {
@@ -409,13 +420,13 @@ func (m *ColumnsOverlay) footerHints() []footerHint {
 		return []footerHint{
 			{"↑↓", "Navigate"},
 			{"enter", "Add"},
-			{"esc", "Close"},
+			{"esc", "Back"},
 		}
 	}
 	if m.editingLabel {
 		return []footerHint{
 			{"enter", "Apply"},
-			{"esc", "Close"},
+			{"esc", "Back"},
 		}
 	}
 	hints := []footerHint{

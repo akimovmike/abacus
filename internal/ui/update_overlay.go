@@ -212,11 +212,6 @@ func (m *App) handleOverlayMsg(msg tea.Msg) (tea.Model, tea.Cmd, bool) {
 		}
 		return m, scheduleThemeToastTick(), true
 
-	case ColumnsClosedMsg:
-		m.activeOverlay = OverlayNone
-		m.columnsOverlay = nil
-		return m, nil, true
-
 	case layoutToastTickMsg:
 		if !m.layoutToastVisible {
 			return m, nil, true
@@ -336,6 +331,12 @@ func (m *App) updateColumnsOverlay(msg tea.Msg) tea.Cmd {
 
 	var cmd tea.Cmd
 	m.columnsOverlay, cmd = m.columnsOverlay.Update(msg)
+
+	if m.columnsOverlay.closed {
+		m.activeOverlay = OverlayNone
+		m.columnsOverlay = nil
+		return nil
+	}
 
 	after := m.columnsOverlay.configSnapshot()
 	if !before.equal(after) {

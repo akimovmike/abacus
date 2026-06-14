@@ -99,7 +99,7 @@ func TestColumnsOverlaySeparatesBuiltinAndLabelColumns(t *testing.T) {
 		if strings.Contains(line, "[x] Comments") {
 			commentsLine = i
 		}
-		if strings.Contains(line, "[x] redesign") {
+		if strings.Contains(line, "feature-ui-redesign") && strings.Contains(line, "[redesign]") {
 			labelLine = i
 		}
 	}
@@ -226,5 +226,106 @@ func TestColumnsOverlayEditsAndRemovesLabelColumn(t *testing.T) {
 	}
 	if len(overlay.labelColumns) != 0 {
 		t.Fatalf("expected label column to be removed, got %v", overlay.labelColumns)
+	}
+}
+
+func TestColumnsOverlayEscFromEditingReturnsToMainView(t *testing.T) {
+	overlay := NewColumnsOverlay(nil)
+	overlay.labelColumns = []LabelColumnConfig{
+		{Label: "ui-redesign", DisplayName: "redesign", Enabled: true},
+	}
+	overlay.cursor = 4
+
+	updated, _ := overlay.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{'e'}})
+	overlay = updated
+	if !overlay.editingLabel {
+		t.Fatal("expected edit mode")
+	}
+
+	updated, cmd := overlay.Update(tea.KeyMsg{Type: tea.KeyEscape})
+	overlay = updated
+	if cmd != nil {
+		t.Fatal("expected Esc from editing to return no command")
+	}
+	if overlay.editingLabel {
+		t.Fatal("expected Esc to exit edit mode")
+	}
+	if overlay.closed {
+		t.Fatal("expected Esc from editing to stay in overlay, not close it")
+	}
+}
+
+func TestColumnsOverlayEscFromAddingReturnsToMainView(t *testing.T) {
+	overlay := NewColumnsOverlay([]string{"backend"})
+	overlay.cursor = len(overlay.rows()) - 1
+
+	updated, _ := overlay.Update(tea.KeyMsg{Type: tea.KeyEnter})
+	overlay = updated
+	if !overlay.addingLabel {
+		t.Fatal("expected adding mode")
+	}
+
+	updated, cmd := overlay.Update(tea.KeyMsg{Type: tea.KeyEscape})
+	overlay = updated
+	if cmd != nil {
+		t.Fatal("expected Esc from adding to return no command")
+	}
+	if overlay.addingLabel {
+		t.Fatal("expected Esc to exit adding mode")
+	}
+	if overlay.closed {
+		t.Fatal("expected Esc from adding to stay in overlay, not close it")
+	}
+}
+
+func TestColumnsOverlayEscFromMainViewClosesOverlay(t *testing.T) {
+	overlay := NewColumnsOverlay(nil)
+
+	updated, cmd := overlay.Update(tea.KeyMsg{Type: tea.KeyEscape})
+	overlay = updated
+	if cmd != nil {
+		t.Fatal("expected Esc from main view to return no command")
+	}
+	if !overlay.closed {
+		t.Fatal("expected Esc from main view to close the overlay")
+	}
+}
+
+func TestColumnsOverlayFooterHintsInEditingAndAddingModes(t *testing.T) {
+	overlay := NewColumnsOverlay([]string{"backend"})
+	overlay.labelColumns = []LabelColumnConfig{
+		{Label: "ui-redesign", DisplayName: "redesign", Enabled: true},
+	}
+
+	overlay.editingLabel = true
+	assertFooterHints(t, overlay.footerHints(), []footerHint{
+		{"enter", "Apply"},
+		{"esc", "Back"},
+	})
+
+	overlay.editingLabel = false
+	overlay.addingLabel = true
+	assertFooterHints(t, overlay.footerHints(), []footerHint{
+		{"↑↓", "Navigate"},
+		{"enter", "Add"},
+		{"esc", "Back"},
+	})
+}
+
+func TestColumnsOverlayLabelRowRendersPillAndBracketedDisplayName(t *testing.T) {
+	overlay := NewColumnsOverlay(nil)
+	overlay.labelColumns = []LabelColumnConfig{
+		{Label: "ready-for-agent", DisplayName: "agent", Enabled: true},
+	}
+	view := stripANSI(overlay.View())
+
+	if !strings.Contains(view, "ready-for-agent") {
+		t.Fatalf("expected label name in view:\n%s", view)
+	}
+	if !strings.Contains(view, "→") {
+		t.Fatalf("expected arrow separator in label row:\n%s", view)
+	}
+	if !strings.Contains(view, "[agent]") {
+		t.Fatalf("expected bracketed display name [agent] in view:\n%s", view)
 	}
 }
