@@ -80,9 +80,7 @@ func (m *App) handleOverlayMsg(msg tea.Msg) (tea.Model, tea.Cmd, bool) {
 			return m, labelCmd, true
 		}
 		if m.activeOverlay == OverlayColumns && m.columnsOverlay != nil {
-			var columnsCmd tea.Cmd
-			m.columnsOverlay, columnsCmd = m.columnsOverlay.Update(msg)
-			return m, columnsCmd, true
+			return m, m.updateColumnsOverlay(msg), true
 		}
 		if m.activeOverlay == OverlayCreate && m.createOverlay != nil {
 			var createCmd tea.Cmd
@@ -214,35 +212,10 @@ func (m *App) handleOverlayMsg(msg tea.Msg) (tea.Model, tea.Cmd, bool) {
 		}
 		return m, scheduleThemeToastTick(), true
 
-	case columnsToastTickMsg:
-		if !m.columnsToastVisible {
-			return m, nil, true
-		}
-		if time.Since(m.columnsToastStart) >= 3*time.Second {
-			m.columnsToastVisible = false
-			return m, nil, true
-		}
-		return m, scheduleColumnsToastTick(), true
-
-	case ColumnsCancelledMsg:
+	case ColumnsClosedMsg:
 		m.activeOverlay = OverlayNone
 		m.columnsOverlay = nil
 		return m, nil, true
-
-	case ColumnsSavedMsg:
-		m.activeOverlay = OverlayNone
-		m.columnsOverlay = nil
-		_ = config.Set(config.KeyTreeShowColumns, msg.ShowColumns)
-		for key, enabled := range msg.Builtins {
-			_ = config.Set(key, enabled)
-		}
-		_ = setConfiguredLabelColumns(msg.LabelColumns)
-		m.recalcVisibleRows()
-		m.updateViewportContent()
-		m.columnsToastVisible = true
-		m.columnsToastStart = time.Now()
-		m.columnsToastEnabled = msg.ShowColumns
-		return m, scheduleColumnsToastTick(), true
 
 	case layoutToastTickMsg:
 		if !m.layoutToastVisible {
@@ -353,6 +326,32 @@ func (m *App) handleOverlayMsg(msg tea.Msg) (tea.Model, tea.Cmd, bool) {
 	}
 
 	return nil, nil, false
+}
+
+func (m *App) updateColumnsOverlay(msg tea.Msg) tea.Cmd {
+	if m.columnsOverlay == nil {
+		return nil
+	}
+	before := m.columnsOverlay.configSnapshot()
+
+	var cmd tea.Cmd
+	m.columnsOverlay, cmd = m.columnsOverlay.Update(msg)
+
+	after := m.columnsOverlay.configSnapshot()
+	if !before.equal(after) {
+		m.applyColumnsOverlayConfig(after)
+	}
+	return cmd
+}
+
+func (m *App) applyColumnsOverlayConfig(cfg columnsOverlayConfig) {
+	_ = config.Set(config.KeyTreeShowColumns, cfg.showColumns)
+	for key, enabled := range cfg.builtins {
+		_ = config.Set(key, enabled)
+	}
+	_ = setConfiguredLabelColumns(cfg.labelColumns)
+	m.recalcVisibleRows()
+	m.updateViewportContent()
 }
 
 // handleCreateComplete processes the createCompleteMsg with fast injection support.

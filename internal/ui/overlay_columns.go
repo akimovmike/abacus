@@ -40,17 +40,17 @@ type ColumnsOverlay struct {
 	labelPicker       ChipComboBox
 	editingLabel      bool
 	editingLabelIndex int
+	replaceNameOnEdit bool
 	displayNameInput  textinput.Model
 }
 
-// ColumnsCancelledMsg is sent when the columns overlay is dismissed without saving.
-type ColumnsCancelledMsg struct{}
+// ColumnsClosedMsg is sent when the columns overlay is dismissed.
+type ColumnsClosedMsg struct{}
 
-// ColumnsSavedMsg is sent when column configuration is confirmed.
-type ColumnsSavedMsg struct {
-	ShowColumns  bool
-	Builtins     map[string]bool
-	LabelColumns []LabelColumnConfig
+type columnsOverlayConfig struct {
+	showColumns  bool
+	builtins     map[string]bool
+	labelColumns []LabelColumnConfig
 }
 
 // NewColumnsOverlay creates a columns configuration overlay from current config.
@@ -90,13 +90,13 @@ func (m *ColumnsOverlay) Update(msg tea.Msg) (*ColumnsOverlay, tea.Cmd) {
 
 	switch {
 	case key.Matches(keyMsg, key.NewBinding(key.WithKeys("esc"))):
-		return m, func() tea.Msg { return ColumnsCancelledMsg{} }
+		return m, func() tea.Msg { return ColumnsClosedMsg{} }
 	case key.Matches(keyMsg, key.NewBinding(key.WithKeys("enter"))):
 		if m.currentRow().kind == columnOverlayRowAdd {
 			m.startAddingLabel()
 			return m, nil
 		}
-		return m, m.save()
+		return m, nil
 	case key.Matches(keyMsg, key.NewBinding(key.WithKeys(" ", "space"))):
 		m.toggleCurrentRow()
 	case key.Matches(keyMsg, key.NewBinding(key.WithKeys("e"))):
@@ -121,8 +121,10 @@ func (m *ColumnsOverlay) updateEditingLabel(msg tea.Msg) (*ColumnsOverlay, tea.C
 			m.commitDisplayNameEdit()
 			return m, nil
 		case key.Matches(msg, key.NewBinding(key.WithKeys("esc"))):
-			m.editingLabel = false
-			return m, nil
+			return m, func() tea.Msg { return ColumnsClosedMsg{} }
+		}
+		if m.replaceNameOnEdit {
+			m.prepareSelectedNameForInput(msg)
 		}
 	}
 	var cmd tea.Cmd
@@ -143,8 +145,7 @@ func (m *ColumnsOverlay) updateAddingLabel(msg tea.Msg) (*ColumnsOverlay, tea.Cm
 		return m, nil
 	case tea.KeyMsg:
 		if key.Matches(msg, key.NewBinding(key.WithKeys("esc"))) {
-			m.addingLabel = false
-			return m, nil
+			return m, func() tea.Msg { return ColumnsClosedMsg{} }
 		}
 	}
 	var cmd tea.Cmd
@@ -186,7 +187,21 @@ func (m *ColumnsOverlay) startEditingCurrentLabel() {
 	m.displayNameInput = input
 	m.editingLabel = true
 	m.editingLabelIndex = row.index
+	m.replaceNameOnEdit = false
 	_ = m.displayNameInput.Focus()
+}
+
+func (m *ColumnsOverlay) prepareSelectedNameForInput(msg tea.KeyMsg) {
+	switch msg.Type {
+	case tea.KeyRunes:
+		m.displayNameInput.SetValue("")
+		m.displayNameInput.SetCursor(0)
+		m.replaceNameOnEdit = false
+	case tea.KeyBackspace, tea.KeyDelete:
+		m.displayNameInput.SetValue("")
+		m.displayNameInput.SetCursor(0)
+		m.replaceNameOnEdit = false
+	}
 }
 
 func (m *ColumnsOverlay) commitDisplayNameEdit() {
@@ -198,6 +213,7 @@ func (m *ColumnsOverlay) commitDisplayNameEdit() {
 		m.labelColumns[m.editingLabelIndex].DisplayName = value
 	}
 	m.editingLabel = false
+	m.replaceNameOnEdit = false
 }
 
 func (m *ColumnsOverlay) removeCurrentLabelColumn() {
@@ -236,6 +252,8 @@ func (m *ColumnsOverlay) addLabelColumn(label string) {
 	})
 	m.cursor = len(m.rows()) - 2
 	m.addingLabel = false
+	m.startEditingCurrentLabel()
+	m.replaceNameOnEdit = true
 }
 
 func (m *ColumnsOverlay) availableLabelColumnOptions() []string {
@@ -266,19 +284,37 @@ func (m *ColumnsOverlay) currentRow() columnOverlayRow {
 	return rows[m.cursor]
 }
 
-func (m *ColumnsOverlay) save() tea.Cmd {
+func (m *ColumnsOverlay) configSnapshot() columnsOverlayConfig {
 	builtins := make(map[string]bool, len(m.builtins))
 	for k, v := range m.builtins {
 		builtins[k] = v
 	}
 	labelColumns := append([]LabelColumnConfig(nil), m.labelColumns...)
-	return func() tea.Msg {
-		return ColumnsSavedMsg{
-			ShowColumns:  m.showColumns,
-			Builtins:     builtins,
-			LabelColumns: labelColumns,
+	return columnsOverlayConfig{
+		showColumns:  m.showColumns,
+		builtins:     builtins,
+		labelColumns: labelColumns,
+	}
+}
+
+func (c columnsOverlayConfig) equal(other columnsOverlayConfig) bool {
+	if c.showColumns != other.showColumns {
+		return false
+	}
+	if len(c.builtins) != len(other.builtins) || len(c.labelColumns) != len(other.labelColumns) {
+		return false
+	}
+	for key, enabled := range c.builtins {
+		if other.builtins[key] != enabled {
+			return false
 		}
 	}
+	for i, col := range c.labelColumns {
+		if other.labelColumns[i] != col {
+			return false
+		}
+	}
+	return true
 }
 
 // View implements tea.Model using the unified overlay framework.
@@ -295,18 +331,12 @@ func (m *ColumnsOverlay) View() string {
 	}
 
 	rows := m.rows()
-	if len(rows) > 0 {
-		prefix := "  "
-		if m.cursor == 0 {
-			prefix = "› "
+	for i, row := range rows {
+		if row.kind == columnOverlayRowLabel && i > 0 && rows[i-1].kind == columnOverlayRowBuiltin {
+			b.BlankLine()
 		}
-		b.Line(prefix + m.renderMasterToggle())
-		b.BlankLine()
-	}
-	for i, row := range rows[1:] {
-		rowIndex := i + 1
 		prefix := "  "
-		if rowIndex == m.cursor {
+		if i == m.cursor {
 			prefix = "› "
 		}
 		b.Line(prefix + m.renderRow(row))
@@ -314,14 +344,6 @@ func (m *ColumnsOverlay) View() string {
 	b.BlankLine()
 	b.Footer(m.footerHints())
 	return b.Build()
-}
-
-func (m *ColumnsOverlay) renderMasterToggle() string {
-	state := "Off"
-	if m.showColumns {
-		state = "On"
-	}
-	return styleHelpDesc().Render("Show columns: ") + styleHelpKey().Render(state)
 }
 
 func (m *ColumnsOverlay) renderRow(row columnOverlayRow) string {
@@ -382,25 +404,40 @@ func (m *ColumnsOverlay) clampCursor() {
 func (m *ColumnsOverlay) footerHints() []footerHint {
 	if m.addingLabel {
 		return []footerHint{
-			{"⏎", "Select"},
 			{"↑↓", "Navigate"},
-			{"esc", "Back"},
+			{"enter", "Add"},
+			{"esc", "Close"},
 		}
 	}
 	if m.editingLabel {
 		return []footerHint{
-			{"⏎", "Save name"},
-			{"esc", "Cancel"},
+			{"enter", "Apply"},
+			{"esc", "Close"},
 		}
 	}
-	return []footerHint{
+	hints := []footerHint{
 		{"↑↓", "Navigate"},
-		{"Space", "Toggle"},
-		{"e", "Rename"},
-		{"d", "Remove"},
-		{"⏎", "Save"},
-		{"esc", "Cancel"},
 	}
+	switch m.currentRow().kind {
+	case columnOverlayRowMaster, columnOverlayRowBuiltin:
+		hints = append(hints,
+			footerHint{"space", "Toggle"},
+			footerHint{"esc", "Close"},
+		)
+	case columnOverlayRowLabel:
+		hints = append(hints,
+			footerHint{"space", "Toggle"},
+			footerHint{"e", "Rename"},
+			footerHint{"d", "Remove"},
+			footerHint{"esc", "Close"},
+		)
+	case columnOverlayRowAdd:
+		hints = append(hints,
+			footerHint{"enter", "Add"},
+			footerHint{"esc", "Close"},
+		)
+	}
+	return hints
 }
 
 // Layer returns a centered layer for the columns overlay.

@@ -231,11 +231,6 @@ type App struct {
 	priorityToastBeadID      string
 	priorityToastNewPriority int
 
-	// Columns toast state
-	columnsToastVisible bool
-	columnsToastStart   time.Time
-	columnsToastEnabled bool
-
 	// Layout state
 	layout             Layout
 	layoutToastVisible bool

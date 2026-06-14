@@ -151,14 +151,11 @@ func TestColumnsKeyOpensColumnsOverlay(t *testing.T) {
 		t.Fatal("expected columns overlay model")
 	}
 	if !config.GetBool(config.KeyTreeShowColumns) {
-		t.Fatal("expected C to leave column visibility unchanged until overlay save")
-	}
-	if afterApp.columnsToastVisible {
-		t.Fatal("expected no columns toast when opening the overlay")
+		t.Fatal("expected C to leave column visibility unchanged until the user toggles it")
 	}
 }
 
-func TestColumnsOverlaySavesMasterToggle(t *testing.T) {
+func TestColumnsOverlayAppliesMasterToggleImmediately(t *testing.T) {
 	restoreColumnsConfig := captureColumnConfig(t)
 	t.Cleanup(restoreColumnsConfig)
 	_ = config.Set(config.KeyTreeShowColumns, true)
@@ -175,28 +172,26 @@ func TestColumnsOverlaySavesMasterToggle(t *testing.T) {
 	app = model.(*App)
 
 	if cmd != nil {
-		t.Fatal("expected staged toggle to return no command")
-	}
-	if !config.GetBool(config.KeyTreeShowColumns) {
-		t.Fatal("expected config to remain unchanged before save")
-	}
-
-	model, cmd = app.Update(tea.KeyMsg{Type: tea.KeyEnter})
-	app = model.(*App)
-	if cmd == nil {
-		t.Fatal("expected save command")
-	}
-	model, _ = app.Update(cmd())
-	app = model.(*App)
-
-	if app.activeOverlay != OverlayNone {
-		t.Fatalf("expected overlay to close after save, got %v", app.activeOverlay)
+		t.Fatal("expected instant toggle to be synchronous")
 	}
 	if config.GetBool(config.KeyTreeShowColumns) {
-		t.Fatal("expected saved master toggle to disable columns")
+		t.Fatal("expected master toggle to update config immediately")
 	}
-	if !app.columnsToastVisible || app.columnsToastEnabled {
-		t.Fatalf("expected disabled columns toast, visible=%t enabled=%t", app.columnsToastVisible, app.columnsToastEnabled)
+	if app.activeOverlay != OverlayColumns {
+		t.Fatalf("expected overlay to stay open after toggle, got %v", app.activeOverlay)
+	}
+
+	model, cmd = app.Update(tea.KeyMsg{Type: tea.KeyEscape})
+	app = model.(*App)
+
+	if cmd != nil {
+		t.Fatal("expected closing columns overlay to be synchronous")
+	}
+	if app.activeOverlay != OverlayNone {
+		t.Fatalf("expected overlay to close on Esc, got %v", app.activeOverlay)
+	}
+	if config.GetBool(config.KeyTreeShowColumns) {
+		t.Fatal("expected Esc not to undo the instant toggle")
 	}
 }
 

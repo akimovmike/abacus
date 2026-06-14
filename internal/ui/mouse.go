@@ -353,7 +353,6 @@ func (m *App) toastSurfaceBounds(mainBodyStart, mainBodyHeight int) pointerBound
 	toastFactories := []func(int, int, int, int) Layer{
 		m.themeToastLayer,
 		m.layoutToastLayer,
-		m.columnsToastLayer,
 		m.updateSuccessToastLayer,
 		m.updateFailureToastLayer,
 		m.updateToastLayer,

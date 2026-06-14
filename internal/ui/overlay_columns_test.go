@@ -7,19 +7,96 @@ import (
 	tea "github.com/charmbracelet/bubbletea"
 )
 
-func TestColumnsOverlaySeparatesMasterToggleFromColumnCheckboxes(t *testing.T) {
+func TestColumnsOverlayRendersMasterToggleAsCheckbox(t *testing.T) {
 	overlay := NewColumnsOverlay(nil)
 	view := stripANSI(overlay.View())
 
-	if strings.Contains(view, "[x] Show columns") || strings.Contains(view, "[ ] Show columns") {
-		t.Fatalf("master toggle should not render as a column checkbox:\n%s", view)
+	if !strings.Contains(view, "[x] Show columns") {
+		t.Fatalf("expected master toggle to render as a checkbox:\n%s", view)
 	}
-	if !strings.Contains(view, "Show columns: On") {
-		t.Fatalf("expected separate master toggle state, got:\n%s", view)
+	if strings.Contains(view, "Show columns: On") || strings.Contains(view, "Show columns: Off") {
+		t.Fatalf("master toggle should not render as read-only state text:\n%s", view)
 	}
 	for _, label := range []string{"[x] Last Updated", "[x] Assignee", "[x] Comments"} {
 		if !strings.Contains(view, label) {
 			t.Fatalf("expected column checkbox %q, got:\n%s", label, view)
+		}
+	}
+}
+
+func TestColumnsOverlayFooterHintsFollowCurrentRowKind(t *testing.T) {
+	overlay := NewColumnsOverlay(nil)
+	overlay.labelColumns = []LabelColumnConfig{
+		{Label: "feature-ui-redesign", DisplayName: "redesign", Enabled: true},
+	}
+
+	overlay.cursor = 0
+	assertFooterHints(t, overlay.footerHints(), []footerHint{
+		{"↑↓", "Navigate"},
+		{"space", "Toggle"},
+		{"esc", "Close"},
+	})
+
+	overlay.cursor = 1
+	assertFooterHints(t, overlay.footerHints(), []footerHint{
+		{"↑↓", "Navigate"},
+		{"space", "Toggle"},
+		{"esc", "Close"},
+	})
+
+	overlay.cursor = 4
+	assertFooterHints(t, overlay.footerHints(), []footerHint{
+		{"↑↓", "Navigate"},
+		{"space", "Toggle"},
+		{"e", "Rename"},
+		{"d", "Remove"},
+		{"esc", "Close"},
+	})
+
+	overlay.cursor = len(overlay.rows()) - 1
+	assertFooterHints(t, overlay.footerHints(), []footerHint{
+		{"↑↓", "Navigate"},
+		{"enter", "Add"},
+		{"esc", "Close"},
+	})
+}
+
+func TestColumnsOverlaySeparatesBuiltinAndLabelColumns(t *testing.T) {
+	overlay := NewColumnsOverlay(nil)
+	overlay.labelColumns = []LabelColumnConfig{
+		{Label: "feature-ui-redesign", DisplayName: "redesign", Enabled: true},
+	}
+	lines := strings.Split(stripANSI(overlay.View()), "\n")
+
+	commentsLine := -1
+	labelLine := -1
+	for i, line := range lines {
+		if strings.Contains(line, "[x] Comments") {
+			commentsLine = i
+		}
+		if strings.Contains(line, "[x] redesign") {
+			labelLine = i
+		}
+	}
+	if commentsLine < 0 || labelLine < 0 || labelLine <= commentsLine {
+		t.Fatalf("expected comments row before label row, got:\n%s", stripANSI(overlay.View()))
+	}
+	for _, line := range lines[commentsLine+1 : labelLine] {
+		if strings.Trim(line, " │") == "" {
+			return
+		}
+	}
+	t.Fatalf("expected blank visual separator between built-in and label columns:\n%s", stripANSI(overlay.View()))
+}
+
+func assertFooterHints(t *testing.T, got, want []footerHint) {
+	t.Helper()
+	if len(got) != len(want) {
+		t.Fatalf("expected %d footer hints, got %d: %#v", len(want), len(got), got)
+	}
+	for i := range want {
+		if got[i] != want[i] {
+			t.Fatalf("footer hint %d = %#v, want %#v (all hints: %#v)", i, got[i], want[i], got)
 		}
 	}
 }
@@ -46,6 +123,12 @@ func TestColumnsOverlayAddsLabelColumnWithDefaultDisplayName(t *testing.T) {
 	if overlay.addingLabel {
 		t.Fatal("expected add label picker to close after selection")
 	}
+	if !overlay.editingLabel {
+		t.Fatal("expected display-name edit mode after selecting label")
+	}
+	if overlay.displayNameInput.Value() != "redesign" {
+		t.Fatalf("expected display-name input to be prefilled with redesign, got %q", overlay.displayNameInput.Value())
+	}
 	if len(overlay.labelColumns) != 1 {
 		t.Fatalf("expected one label column, got %d", len(overlay.labelColumns))
 	}
@@ -58,6 +141,27 @@ func TestColumnsOverlayAddsLabelColumnWithDefaultDisplayName(t *testing.T) {
 	}
 	if !got.Enabled {
 		t.Fatal("expected added label column to be enabled")
+	}
+}
+
+func TestColumnsOverlayTypingAfterAddReplacesSuggestedDisplayName(t *testing.T) {
+	overlay := NewColumnsOverlay([]string{"feature-ui-redesign"})
+	overlay.cursor = len(overlay.rows()) - 1
+
+	updated, _ := overlay.Update(tea.KeyMsg{Type: tea.KeyEnter})
+	overlay = updated
+	updated, _ = overlay.Update(ComboBoxEnterSelectedMsg{Value: "feature-ui-redesign"})
+	overlay = updated
+	updated, _ = overlay.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune("UI")})
+	overlay = updated
+	if overlay.displayNameInput.Value() != "UI" {
+		t.Fatalf("expected typed name to replace suggested default, got %q", overlay.displayNameInput.Value())
+	}
+
+	updated, _ = overlay.Update(tea.KeyMsg{Type: tea.KeyEnter})
+	overlay = updated
+	if overlay.labelColumns[0].DisplayName != "UI" {
+		t.Fatalf("expected committed display name UI, got %q", overlay.labelColumns[0].DisplayName)
 	}
 }
 

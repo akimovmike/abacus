@@ -107,7 +107,12 @@ func (m *App) delegateToOverlay(msg tea.KeyMsg) (tea.Cmd, bool) {
 	}
 
 	if m.activeOverlay == OverlayColumns && m.columnsOverlay != nil {
-		m.columnsOverlay, cmd = m.columnsOverlay.Update(msg)
+		if key.Matches(msg, m.keys.Escape) {
+			m.activeOverlay = OverlayNone
+			m.columnsOverlay = nil
+			return nil, true
+		}
+		cmd = m.updateColumnsOverlay(msg)
 		return cmd, true
 	}
 
