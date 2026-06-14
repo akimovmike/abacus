@@ -1,10 +1,28 @@
 package ui
 
 import (
+	"strings"
 	"testing"
 
 	tea "github.com/charmbracelet/bubbletea"
 )
+
+func TestColumnsOverlaySeparatesMasterToggleFromColumnCheckboxes(t *testing.T) {
+	overlay := NewColumnsOverlay(nil)
+	view := stripANSI(overlay.View())
+
+	if strings.Contains(view, "[x] Show columns") || strings.Contains(view, "[ ] Show columns") {
+		t.Fatalf("master toggle should not render as a column checkbox:\n%s", view)
+	}
+	if !strings.Contains(view, "Show columns: On") {
+		t.Fatalf("expected separate master toggle state, got:\n%s", view)
+	}
+	for _, label := range []string{"[x] Last Updated", "[x] Assignee", "[x] Comments"} {
+		if !strings.Contains(view, label) {
+			t.Fatalf("expected column checkbox %q, got:\n%s", label, view)
+		}
+	}
+}
 
 func TestColumnsOverlayAddsLabelColumnWithDefaultDisplayName(t *testing.T) {
 	overlay := NewColumnsOverlay([]string{"backend", "feature-ui-redesign"})

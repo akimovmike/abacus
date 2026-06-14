@@ -293,9 +293,20 @@ func (m *ColumnsOverlay) View() string {
 		b.Footer(m.footerHints())
 		return b.Build()
 	}
-	for i, row := range m.rows() {
+
+	rows := m.rows()
+	if len(rows) > 0 {
 		prefix := "  "
-		if i == m.cursor {
+		if m.cursor == 0 {
+			prefix = "› "
+		}
+		b.Line(prefix + m.renderMasterToggle())
+		b.BlankLine()
+	}
+	for i, row := range rows[1:] {
+		rowIndex := i + 1
+		prefix := "  "
+		if rowIndex == m.cursor {
 			prefix = "› "
 		}
 		b.Line(prefix + m.renderRow(row))
@@ -303,6 +314,14 @@ func (m *ColumnsOverlay) View() string {
 	b.BlankLine()
 	b.Footer(m.footerHints())
 	return b.Build()
+}
+
+func (m *ColumnsOverlay) renderMasterToggle() string {
+	state := "Off"
+	if m.showColumns {
+		state = "On"
+	}
+	return styleHelpDesc().Render("Show columns: ") + styleHelpKey().Render(state)
 }
 
 func (m *ColumnsOverlay) renderRow(row columnOverlayRow) string {
