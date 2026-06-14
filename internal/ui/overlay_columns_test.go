@@ -61,6 +61,31 @@ func TestColumnsOverlayFooterHintsFollowCurrentRowKind(t *testing.T) {
 	})
 }
 
+func TestColumnsOverlaySeparatesMasterToggleAndColumnRows(t *testing.T) {
+	overlay := NewColumnsOverlay(nil)
+	lines := strings.Split(stripANSI(overlay.View()), "\n")
+
+	masterLine := -1
+	firstColumnLine := -1
+	for i, line := range lines {
+		if strings.Contains(line, "[x] Show columns") || strings.Contains(line, "[ ] Show columns") {
+			masterLine = i
+		}
+		if strings.Contains(line, "[x] Last Updated") || strings.Contains(line, "[ ] Last Updated") {
+			firstColumnLine = i
+		}
+	}
+	if masterLine < 0 || firstColumnLine < 0 || firstColumnLine <= masterLine {
+		t.Fatalf("expected master toggle before column rows, got:\n%s", stripANSI(overlay.View()))
+	}
+	for _, line := range lines[masterLine+1 : firstColumnLine] {
+		if strings.Trim(line, " │") == "" {
+			return
+		}
+	}
+	t.Fatalf("expected blank visual separator between master toggle and column rows:\n%s", stripANSI(overlay.View()))
+}
+
 func TestColumnsOverlaySeparatesBuiltinAndLabelColumns(t *testing.T) {
 	overlay := NewColumnsOverlay(nil)
 	overlay.labelColumns = []LabelColumnConfig{

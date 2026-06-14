@@ -332,6 +332,9 @@ func (m *ColumnsOverlay) View() string {
 
 	rows := m.rows()
 	for i, row := range rows {
+		if row.kind == columnOverlayRowBuiltin && i > 0 && rows[i-1].kind == columnOverlayRowMaster {
+			b.BlankLine()
+		}
 		if row.kind == columnOverlayRowLabel && i > 0 && rows[i-1].kind == columnOverlayRowBuiltin {
 			b.BlankLine()
 		}
