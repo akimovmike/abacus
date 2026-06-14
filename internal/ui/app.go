@@ -41,6 +41,7 @@ const (
 	OverlayDelete
 	OverlayComment
 	OverlayPriority
+	OverlayColumns
 )
 
 // Layout describes how the tree and detail panes are arranged.
@@ -181,6 +182,7 @@ type App struct {
 	deleteOverlay   *DeleteOverlay
 	commentOverlay  *CommentOverlay
 	priorityOverlay *PriorityOverlay
+	columnsOverlay  *ColumnsOverlay
 
 	// Labels toast state
 	labelsToastVisible bool

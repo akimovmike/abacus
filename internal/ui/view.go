@@ -179,6 +179,10 @@ func (m *App) View() string {
 		if layer := m.priorityOverlay.Layer(m.width, m.height, headerHeight, bottomMargin); layer != nil {
 			overlayLayers = append(overlayLayers, layer)
 		}
+	} else if m.activeOverlay == OverlayColumns && m.columnsOverlay != nil {
+		if layer := m.columnsOverlay.Layer(m.width, m.height, headerHeight, bottomMargin); layer != nil {
+			overlayLayers = append(overlayLayers, layer)
+		}
 	} else if m.showHelp {
 		overlayLayers = append(overlayLayers, newHelpOverlayLayer(m.keys, m.width, m.height, headerHeight, bottomMargin))
 	}

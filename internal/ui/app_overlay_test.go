@@ -7,6 +7,7 @@ import (
 	"time"
 
 	"abacus/internal/beads"
+	"abacus/internal/config"
 	"abacus/internal/graph"
 
 	tea "github.com/charmbracelet/bubbletea"
@@ -120,6 +121,82 @@ func TestHelpOverlayInView(t *testing.T) {
 	}
 	if !strings.Contains(view, "NAVIGATION") {
 		t.Error("expected view to contain 'NAVIGATION' section when help is shown")
+	}
+}
+
+func TestColumnsKeyOpensColumnsOverlay(t *testing.T) {
+	restoreColumnsConfig := captureColumnConfig(t)
+	t.Cleanup(restoreColumnsConfig)
+	_ = config.Set(config.KeyTreeShowColumns, true)
+
+	node := &graph.Node{
+		Issue: beads.FullIssue{ID: "ab-col", Title: "Column Config", Status: "open"},
+	}
+	app := &App{
+		keys:        DefaultKeyMap(),
+		visibleRows: nodesToRows(node),
+		cursor:      0,
+	}
+
+	model, cmd := app.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{'C'}})
+	afterApp := model.(*App)
+
+	if cmd != nil {
+		t.Fatal("expected opening columns overlay to be synchronous")
+	}
+	if afterApp.activeOverlay != OverlayColumns {
+		t.Fatalf("expected columns overlay, got %v", afterApp.activeOverlay)
+	}
+	if afterApp.columnsOverlay == nil {
+		t.Fatal("expected columns overlay model")
+	}
+	if !config.GetBool(config.KeyTreeShowColumns) {
+		t.Fatal("expected C to leave column visibility unchanged until overlay save")
+	}
+	if afterApp.columnsToastVisible {
+		t.Fatal("expected no columns toast when opening the overlay")
+	}
+}
+
+func TestColumnsOverlaySavesMasterToggle(t *testing.T) {
+	restoreColumnsConfig := captureColumnConfig(t)
+	t.Cleanup(restoreColumnsConfig)
+	_ = config.Set(config.KeyTreeShowColumns, true)
+
+	app := &App{
+		keys:        DefaultKeyMap(),
+		visibleRows: nodesToRows(&graph.Node{Issue: beads.FullIssue{ID: "ab-col", Status: "open"}}),
+		cursor:      0,
+	}
+
+	model, _ := app.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{'C'}})
+	app = model.(*App)
+	model, cmd := app.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{' '}})
+	app = model.(*App)
+
+	if cmd != nil {
+		t.Fatal("expected staged toggle to return no command")
+	}
+	if !config.GetBool(config.KeyTreeShowColumns) {
+		t.Fatal("expected config to remain unchanged before save")
+	}
+
+	model, cmd = app.Update(tea.KeyMsg{Type: tea.KeyEnter})
+	app = model.(*App)
+	if cmd == nil {
+		t.Fatal("expected save command")
+	}
+	model, _ = app.Update(cmd())
+	app = model.(*App)
+
+	if app.activeOverlay != OverlayNone {
+		t.Fatalf("expected overlay to close after save, got %v", app.activeOverlay)
+	}
+	if config.GetBool(config.KeyTreeShowColumns) {
+		t.Fatal("expected saved master toggle to disable columns")
+	}
+	if !app.columnsToastVisible || app.columnsToastEnabled {
+		t.Fatalf("expected disabled columns toast, visible=%t enabled=%t", app.columnsToastVisible, app.columnsToastEnabled)
 	}
 }
 

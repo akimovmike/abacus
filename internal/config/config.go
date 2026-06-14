@@ -31,6 +31,7 @@ const (
 	KeyTreeColumnsLastUpdated = "tree.columns.lastUpdated"
 	KeyTreeColumnsAssignee    = "tree.columns.assignee"
 	KeyTreeColumnsComments    = "tree.columns.comments"
+	KeyTreeLabelColumns       = "tree.labelColumns"
 
 	// Backend selection keys
 	KeyBeadsBackend                  = "beads.backend"                       // "bd" or "br", empty means auto-detect
@@ -154,6 +155,15 @@ func GetDuration(key string) time.Duration {
 		return 0
 	}
 	return v.GetDuration(key)
+}
+
+// UnmarshalKey decodes a configuration key into the supplied target.
+func UnmarshalKey(key string, target any) error {
+	v, err := getViper()
+	if err != nil {
+		return err
+	}
+	return v.UnmarshalKey(key, target)
 }
 
 // Set updates a configuration key at runtime, initializing on demand.
@@ -292,6 +302,7 @@ func setDefaults(v *viper.Viper) {
 	v.SetDefault(KeyTreeColumnsLastUpdated, true)
 	v.SetDefault(KeyTreeColumnsAssignee, true)
 	v.SetDefault(KeyTreeColumnsComments, true)
+	v.SetDefault(KeyTreeLabelColumns, []map[string]any{})
 	v.SetDefault(KeyBeadsBackend, "")                     // Empty means auto-detect
 	v.SetDefault(KeyBdUnsupportedVersionWarnShown, false) // One-time warning not yet shown
 	v.SetDefault(KeyLayoutMode, "wide")

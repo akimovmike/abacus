@@ -5,6 +5,8 @@ import (
 	"fmt"
 	"time"
 
+	"abacus/internal/config"
+
 	tea "github.com/charmbracelet/bubbletea"
 )
 
@@ -76,6 +78,11 @@ func (m *App) handleOverlayMsg(msg tea.Msg) (tea.Model, tea.Cmd, bool) {
 			var labelCmd tea.Cmd
 			m.labelsOverlay, labelCmd = m.labelsOverlay.Update(msg)
 			return m, labelCmd, true
+		}
+		if m.activeOverlay == OverlayColumns && m.columnsOverlay != nil {
+			var columnsCmd tea.Cmd
+			m.columnsOverlay, columnsCmd = m.columnsOverlay.Update(msg)
+			return m, columnsCmd, true
 		}
 		if m.activeOverlay == OverlayCreate && m.createOverlay != nil {
 			var createCmd tea.Cmd
@@ -215,6 +222,26 @@ func (m *App) handleOverlayMsg(msg tea.Msg) (tea.Model, tea.Cmd, bool) {
 			m.columnsToastVisible = false
 			return m, nil, true
 		}
+		return m, scheduleColumnsToastTick(), true
+
+	case ColumnsCancelledMsg:
+		m.activeOverlay = OverlayNone
+		m.columnsOverlay = nil
+		return m, nil, true
+
+	case ColumnsSavedMsg:
+		m.activeOverlay = OverlayNone
+		m.columnsOverlay = nil
+		_ = config.Set(config.KeyTreeShowColumns, msg.ShowColumns)
+		for key, enabled := range msg.Builtins {
+			_ = config.Set(key, enabled)
+		}
+		_ = setConfiguredLabelColumns(msg.LabelColumns)
+		m.recalcVisibleRows()
+		m.updateViewportContent()
+		m.columnsToastVisible = true
+		m.columnsToastStart = time.Now()
+		m.columnsToastEnabled = msg.ShowColumns
 		return m, scheduleColumnsToastTick(), true
 
 	case layoutToastTickMsg:

@@ -341,6 +341,8 @@ func (m *App) overlaySurfaceBounds(topMargin, bottomMargin int) pointerBounds {
 		layer = m.commentOverlay.Layer(m.width, m.height, topMargin, bottomMargin)
 	case m.activeOverlay == OverlayPriority && m.priorityOverlay != nil:
 		layer = m.priorityOverlay.Layer(m.width, m.height, topMargin, bottomMargin)
+	case m.activeOverlay == OverlayColumns && m.columnsOverlay != nil:
+		layer = m.columnsOverlay.Layer(m.width, m.height, topMargin, bottomMargin)
 	case m.showHelp:
 		layer = newHelpOverlayLayer(m.keys, m.width, m.height, topMargin, bottomMargin)
 	}

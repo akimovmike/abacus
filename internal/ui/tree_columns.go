@@ -17,8 +17,22 @@ var columnSeparatorWidth = lipgloss.Width(columnSeparator)
 
 type treeColumn struct {
 	ConfigKey string
+	Label     string
 	Width     int
 	Render    func(*graph.Node) string
+}
+
+// LabelColumnConfig stores a user-configured label column.
+type LabelColumnConfig struct {
+	Label       string `mapstructure:"label" json:"label" yaml:"label"`
+	DisplayName string `mapstructure:"displayName" json:"displayName" yaml:"displayName"`
+	Enabled     bool   `mapstructure:"enabled" json:"enabled" yaml:"enabled"`
+}
+
+type storedLabelColumnConfig struct {
+	Label       string `mapstructure:"label"`
+	DisplayName string `mapstructure:"displayName"`
+	Enabled     *bool  `mapstructure:"enabled"`
 }
 
 var defaultTreeColumns = []treeColumn{
@@ -111,12 +125,23 @@ func prepareColumnState(totalWidth int) (columnState, int) {
 		return columnState{}, totalWidth
 	}
 
-	// Gather all enabled columns
+	// Gather all enabled columns.
 	enabledCols := make([]treeColumn, 0, len(defaultTreeColumns))
 	for _, col := range defaultTreeColumns {
 		if config.GetBool(col.ConfigKey) {
 			enabledCols = append(enabledCols, col)
 		}
+	}
+	for _, labelCol := range configuredLabelColumns() {
+		if !labelCol.Enabled {
+			continue
+		}
+		displayName := labelColumnDisplayName(labelCol)
+		enabledCols = append(enabledCols, treeColumn{
+			Label:  labelCol.Label,
+			Width:  lipgloss.Width(displayName),
+			Render: renderLabelColumn(labelCol.Label, displayName),
+		})
 	}
 	if len(enabledCols) == 0 {
 		return columnState{}, totalWidth
@@ -185,4 +210,87 @@ func renderAssigneeColumn(node *graph.Node) string {
 	}
 	const columnWidth = 10
 	return truncateWithEllipsis(node.Issue.Assignee, columnWidth)
+}
+
+func configuredLabelColumns() []LabelColumnConfig {
+	var cols []storedLabelColumnConfig
+	if err := config.UnmarshalKey(config.KeyTreeLabelColumns, &cols); err != nil {
+		return nil
+	}
+
+	normalized := make([]LabelColumnConfig, 0, len(cols))
+	for _, col := range cols {
+		label := strings.TrimSpace(col.Label)
+		displayName := strings.TrimSpace(col.DisplayName)
+		if label == "" {
+			continue
+		}
+		if displayName == "" {
+			displayName = defaultLabelColumnDisplayName(label)
+		}
+		if lipgloss.Width(displayName) == 0 {
+			displayName = label
+		}
+		enabled := true
+		if col.Enabled != nil {
+			enabled = *col.Enabled
+		}
+		normalized = append(normalized, LabelColumnConfig{
+			Label:       label,
+			DisplayName: displayName,
+			Enabled:     enabled,
+		})
+	}
+	return normalized
+}
+
+func setConfiguredLabelColumns(cols []LabelColumnConfig) error {
+	normalized := make([]LabelColumnConfig, 0, len(cols))
+	seen := make(map[string]struct{}, len(cols))
+	for _, col := range cols {
+		col.Label = strings.TrimSpace(col.Label)
+		col.DisplayName = strings.TrimSpace(col.DisplayName)
+		if col.Label == "" {
+			continue
+		}
+		if _, ok := seen[col.Label]; ok {
+			continue
+		}
+		seen[col.Label] = struct{}{}
+		if col.DisplayName == "" {
+			col.DisplayName = defaultLabelColumnDisplayName(col.Label)
+		}
+		normalized = append(normalized, col)
+	}
+	return config.Set(config.KeyTreeLabelColumns, normalized)
+}
+
+func renderLabelColumn(label, displayName string) func(*graph.Node) string {
+	return func(node *graph.Node) string {
+		if node == nil {
+			return ""
+		}
+		for _, issueLabel := range node.Issue.Labels {
+			if issueLabel == label {
+				return displayName
+			}
+		}
+		return ""
+	}
+}
+
+func labelColumnDisplayName(col LabelColumnConfig) string {
+	if strings.TrimSpace(col.DisplayName) != "" {
+		return strings.TrimSpace(col.DisplayName)
+	}
+	return defaultLabelColumnDisplayName(col.Label)
+}
+
+func defaultLabelColumnDisplayName(label string) string {
+	trimmed := strings.TrimSpace(label)
+	if trimmed == "" {
+		return ""
+	}
+	parts := strings.Split(trimmed, "-")
+	return parts[len(parts)-1]
 }

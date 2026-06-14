@@ -106,6 +106,11 @@ func (m *App) delegateToOverlay(msg tea.KeyMsg) (tea.Cmd, bool) {
 		return cmd, true
 	}
 
+	if m.activeOverlay == OverlayColumns && m.columnsOverlay != nil {
+		m.columnsOverlay, cmd = m.columnsOverlay.Update(msg)
+		return cmd, true
+	}
+
 	return nil, false
 }
 
@@ -312,16 +317,11 @@ func (m *App) handleCopyKey() (tea.Model, tea.Cmd) {
 	return m, nil
 }
 
-// handleToggleColumnsKey toggles the columns display.
+// handleToggleColumnsKey opens the columns configuration overlay.
 func (m *App) handleToggleColumnsKey() (tea.Model, tea.Cmd) {
-	current := config.GetBool(config.KeyTreeShowColumns)
-	newVal := !current
-	_ = config.Set(config.KeyTreeShowColumns, newVal)
-	m.recalcVisibleRows()
-	m.columnsToastVisible = true
-	m.columnsToastStart = time.Now()
-	m.columnsToastEnabled = newVal
-	return m, scheduleColumnsToastTick()
+	m.columnsOverlay = NewColumnsOverlay(m.getAllLabels())
+	m.activeOverlay = OverlayColumns
+	return m, nil
 }
 
 // handleThemeKey cycles the theme forward or backward.

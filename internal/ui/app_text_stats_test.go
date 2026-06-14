@@ -314,11 +314,13 @@ func captureColumnConfig(t *testing.T) func() {
 	prevUpdated := config.GetBool(config.KeyTreeColumnsLastUpdated)
 	prevAssignee := config.GetBool(config.KeyTreeColumnsAssignee)
 	prevComments := config.GetBool(config.KeyTreeColumnsComments)
+	prevLabels := configuredLabelColumns()
 	return func() {
 		_ = config.Set(config.KeyTreeShowColumns, prevShow)
 		_ = config.Set(config.KeyTreeColumnsLastUpdated, prevUpdated)
 		_ = config.Set(config.KeyTreeColumnsAssignee, prevAssignee)
 		_ = config.Set(config.KeyTreeColumnsComments, prevComments)
+		_ = setConfiguredLabelColumns(prevLabels)
 	}
 }
 
@@ -336,5 +338,8 @@ func setColumnConfig(t *testing.T, showColumns, showUpdated, showComments bool) 
 	}
 	if err := config.Set(config.KeyTreeColumnsComments, showComments); err != nil {
 		t.Fatalf("failed to set showColumns.comments: %v", err)
+	}
+	if err := setConfiguredLabelColumns(nil); err != nil {
+		t.Fatalf("failed to clear label columns: %v", err)
 	}
 }

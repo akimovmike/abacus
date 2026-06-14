@@ -208,7 +208,7 @@ func DefaultKeyMap() KeyMap {
 		// Columns
 		ToggleColumns: key.NewBinding(
 			key.WithKeys("C"),
-			key.WithHelp("C", "Toggle columns"),
+			key.WithHelp("C", "Columns"),
 		),
 
 		// Update

@@ -1,6 +1,7 @@
 package ui
 
 import (
+	"strings"
 	"testing"
 
 	"abacus/internal/beads"
@@ -215,5 +216,70 @@ func TestPrepareColumnState_AssigneeColumnOrder(t *testing.T) {
 	}
 	if state.columns[2].ConfigKey != config.KeyTreeColumnsComments {
 		t.Errorf("expected columns[2] = comments, got %s", state.columns[2].ConfigKey)
+	}
+}
+
+func TestBuildTreeLines_RendersConfiguredLabelColumns(t *testing.T) {
+	restoreColumnsConfig := captureColumnConfig(t)
+	t.Cleanup(restoreColumnsConfig)
+
+	_ = config.Set(config.KeyTreeShowColumns, true)
+	_ = config.Set(config.KeyTreeColumnsLastUpdated, false)
+	_ = config.Set(config.KeyTreeColumnsAssignee, false)
+	_ = config.Set(config.KeyTreeColumnsComments, false)
+	_ = config.Set(config.KeyTreeLabelColumns, []LabelColumnConfig{
+		{Label: "ui-redesign", DisplayName: "UI", Enabled: true},
+	})
+
+	withLabel := &graph.Node{Issue: beads.FullIssue{
+		ID:     "ab-401",
+		Title:  "Has UI label",
+		Status: "open",
+		Labels: []string{"ui-redesign"},
+	}}
+	withoutLabel := &graph.Node{Issue: beads.FullIssue{
+		ID:     "ab-402",
+		Title:  "Backend only",
+		Status: "open",
+		Labels: []string{"backend"},
+	}}
+	m := App{
+		visibleRows: nodesToRows(withLabel, withoutLabel),
+		cursor:      -1,
+	}
+
+	lines, _, _ := m.buildTreeLines(80)
+	if len(lines) != 2 {
+		t.Fatalf("expected two tree lines, got %d", len(lines))
+	}
+
+	if !strings.Contains(lines[0], "│") || !strings.Contains(lines[0], "UI") {
+		t.Fatalf("expected first row to show label column value, got %q", lines[0])
+	}
+	if !strings.Contains(lines[1], "│") {
+		t.Fatalf("expected second row to keep an empty label column, got %q", lines[1])
+	}
+	if strings.Contains(lines[1], "UI") {
+		t.Fatalf("expected second row label column to be blank, got %q", lines[1])
+	}
+}
+
+func TestConfiguredLabelColumnsDefaultToEnabledAndLastSegmentName(t *testing.T) {
+	restoreColumnsConfig := captureColumnConfig(t)
+	t.Cleanup(restoreColumnsConfig)
+
+	_ = config.Set(config.KeyTreeLabelColumns, []map[string]any{
+		{"label": "feature-ui-redesign"},
+	})
+
+	cols := configuredLabelColumns()
+	if len(cols) != 1 {
+		t.Fatalf("expected one label column, got %d", len(cols))
+	}
+	if !cols[0].Enabled {
+		t.Fatal("expected label column without enabled field to default enabled")
+	}
+	if cols[0].DisplayName != "redesign" {
+		t.Fatalf("expected default display name redesign, got %q", cols[0].DisplayName)
 	}
 }

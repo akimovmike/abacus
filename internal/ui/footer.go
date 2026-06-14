@@ -27,6 +27,7 @@ var globalFooterHints = []footerHint{
 	{"s", "✎ Status"},
 	{"p", "✎ Priority"},
 	{"L", "Labels"},
+	{"C", "Columns"},
 	{"m", "Comment"},
 	{"q", "Quit"},
 	{"?", "Help"},
@@ -84,6 +85,10 @@ func (m *App) renderFooter() string {
 		hints = priorityOverlayFooterHints
 	case OverlayLabels:
 		hints = labelsOverlayFooterHints
+	case OverlayColumns:
+		if m.columnsOverlay != nil {
+			hints = m.columnsOverlay.footerHints()
+		}
 	case OverlayCreate:
 		hints = createOverlayFooterHints
 	default:
