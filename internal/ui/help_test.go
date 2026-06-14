@@ -92,9 +92,23 @@ func TestGetHelpSections(t *testing.T) {
 		}
 	})
 
-	t.Run("ActionsHas8Rows", func(t *testing.T) {
-		if len(sections[1].rows) != 8 {
-			t.Errorf("Actions section: expected 8 rows, got %d", len(sections[1].rows))
+	t.Run("ActionsHas10Rows", func(t *testing.T) {
+		if len(sections[1].rows) != 10 {
+			t.Errorf("Actions section: expected 10 rows, got %d", len(sections[1].rows))
+		}
+	})
+
+	t.Run("ActionsIncludesPreviousFocus", func(t *testing.T) {
+		if !helpSectionContains(sections[1], keys.ShiftTab.Help().Key, keys.ShiftTab.Help().Desc) {
+			t.Errorf("Actions section missing ShiftTab help row %q/%q",
+				keys.ShiftTab.Help().Key, keys.ShiftTab.Help().Desc)
+		}
+	})
+
+	t.Run("ActionsIncludesToggleColumns", func(t *testing.T) {
+		if !helpSectionContains(sections[1], keys.ToggleColumns.Help().Key, keys.ToggleColumns.Help().Desc) {
+			t.Errorf("Actions section missing ToggleColumns help row %q/%q",
+				keys.ToggleColumns.Help().Key, keys.ToggleColumns.Help().Desc)
 		}
 	})
 
@@ -127,6 +141,15 @@ func TestGetHelpSections(t *testing.T) {
 				keys.Up.Help().Desc, sections[0].rows[0][1])
 		}
 	})
+}
+
+func helpSectionContains(section helpSection, key, desc string) bool {
+	for _, row := range section.rows {
+		if row[0] == key && row[1] == desc {
+			return true
+		}
+	}
+	return false
 }
 
 func TestRenderHelpSectionTable(t *testing.T) {
