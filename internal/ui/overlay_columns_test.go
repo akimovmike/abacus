@@ -4,6 +4,8 @@ import (
 	"strings"
 	"testing"
 
+	"abacus/internal/ui/theme"
+
 	tea "github.com/charmbracelet/bubbletea"
 )
 
@@ -328,4 +330,95 @@ func TestColumnsOverlayLabelRowRendersPillAndBracketedDisplayName(t *testing.T) 
 	if !strings.Contains(view, "[agent]") {
 		t.Fatalf("expected bracketed display name [agent] in view:\n%s", view)
 	}
+}
+
+func TestColumnsOverlayLabelSeparatorKeepsOverlayBackground(t *testing.T) {
+	prevTheme := theme.CurrentName()
+	t.Cleanup(func() { _ = theme.SetTheme(prevTheme) })
+	if !theme.SetTheme("dracula") {
+		t.Fatal("expected dracula theme to be registered")
+	}
+
+	overlay := NewColumnsOverlay(nil)
+	overlay.labelColumns = []LabelColumnConfig{
+		{Label: "ready-for-agent", DisplayName: "agent", Enabled: true},
+	}
+	layer := overlay.Layer(80, 24, 1, 1)
+	if layer == nil {
+		t.Fatal("expected columns overlay layer")
+	}
+	canvas := layer.Render()
+	if canvas == nil {
+		t.Fatal("expected columns overlay canvas")
+	}
+
+	x, y, ok := findCanvasCell(canvas, "→")
+	if !ok {
+		t.Fatalf("expected label separator arrow in overlay:\n%s", stripANSI(canvas.Render()))
+	}
+	for _, cellX := range []int{x - 1, x, x + 1} {
+		assertCellHasSecondaryBackground(t, canvas, cellX, y)
+	}
+}
+
+func TestColumnsOverlayViewOmitsDefaultResetGapAfterPill(t *testing.T) {
+	app := &App{
+		ready:         true,
+		width:         100,
+		height:        30,
+		repoName:      "abacus",
+		activeOverlay: OverlayColumns,
+		columnsOverlay: &ColumnsOverlay{
+			showColumns: true,
+			builtins:    map[string]bool{},
+			labelColumns: []LabelColumnConfig{
+				{Label: "ready-for-agent", DisplayName: "agent", Enabled: true},
+			},
+		},
+	}
+
+	view := app.View()
+	if strings.Contains(view, "\x1b[0m ") {
+		t.Fatalf("columns overlay contains default reset gap after styled content: %q", view)
+	}
+}
+
+func findCanvasCell(canvas *Canvas, value string) (int, int, bool) {
+	for y := 0; y < canvas.Height(); y++ {
+		for x := 0; x < canvas.Width(); x++ {
+			cell := canvas.Cell(x, y)
+			if cell != nil && cell.String() == value {
+				return x, y, true
+			}
+		}
+	}
+	return 0, 0, false
+}
+
+func assertCellHasSecondaryBackground(t *testing.T, canvas *Canvas, x, y int) {
+	t.Helper()
+	cell := canvas.Cell(x, y)
+	if cell == nil {
+		t.Fatalf("missing cell at %d,%d", x, y)
+	}
+	expected, ok := lipglossColorToANSI(theme.Current().BackgroundSecondary())
+	if !ok {
+		t.Fatal("expected secondary background color to convert to ANSI")
+	}
+	if cell.Style.Bg == nil {
+		t.Fatalf("cell (%d,%d) missing background", x, y)
+	}
+	gr, gg, gb, _ := cell.Style.Bg.RGBA()
+	er, eg, eb, _ := expected.RGBA()
+	if !closeUint32(gr, er) || !closeUint32(gg, eg) || !closeUint32(gb, eb) {
+		t.Fatalf("cell (%d,%d) background = RGB(%d,%d,%d), want RGB(%d,%d,%d)", x, y, gr, gg, gb, er, eg, eb)
+	}
+}
+
+func closeUint32(a, b uint32) bool {
+	const tolerance = 0x101
+	if a > b {
+		return a-b <= tolerance
+	}
+	return b-a <= tolerance
 }

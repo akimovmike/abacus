@@ -279,6 +279,12 @@ func styleOverlaySectionLabel() lipgloss.Style {
 		Bold(true)
 }
 
+func styleOverlayMuted() lipgloss.Style {
+	return lipgloss.NewStyle().
+		Foreground(theme.Current().TextMuted()).
+		Background(theme.Current().BackgroundSecondary())
+}
+
 // BaseOverlayLayer creates a centered Layer from an overlay's View function.
 // This eliminates the need for copy-pasted Layer() methods in each overlay.
 //

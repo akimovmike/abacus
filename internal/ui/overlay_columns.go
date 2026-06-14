@@ -356,9 +356,10 @@ func (m *ColumnsOverlay) renderRow(row columnOverlayRow) string {
 		return styleHelpKey().Render("+") + styleHelpDesc().Render(" Add label column...")
 	}
 	if m.editingLabel && row.kind == columnOverlayRowLabel && row.index == m.editingLabelIndex {
+		pill := renderPillChip(row.label, chipStateNormal)
 		return styleHelpKey().Render("[x]") + " " +
-			renderPillChip(row.label, chipStateNormal) +
-			styleStatsDim().Render(" → ") +
+			pill +
+			styleOverlayMuted().Render(" → ") +
 			m.displayNameInput.View()
 	}
 	checked := "[ ]"
@@ -368,16 +369,17 @@ func (m *ColumnsOverlay) renderRow(row columnOverlayRow) string {
 	if row.kind == columnOverlayRowLabel {
 		style := styleHelpDesc()
 		if !m.showColumns {
-			style = styleStatsDim()
+			style = styleOverlayMuted()
 		}
+		pill := renderPillChip(row.label, chipStateNormal)
 		return styleHelpKey().Render(checked) + " " +
-			renderPillChip(row.label, chipStateNormal) +
-			styleStatsDim().Render(" → ") +
+			pill +
+			styleOverlayMuted().Render(" → ") +
 			style.Render("["+row.displayName+"]")
 	}
 	style := styleHelpDesc()
 	if !m.showColumns && row.kind != columnOverlayRowMaster {
-		style = styleStatsDim()
+		style = styleOverlayMuted()
 	}
 	return styleHelpKey().Render(checked) + style.Render(" "+row.label)
 }
