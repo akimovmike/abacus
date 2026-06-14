@@ -336,9 +336,11 @@ func (m *ColumnsOverlay) View() string {
 	for i, row := range rows {
 		if row.kind == columnOverlayRowBuiltin && i > 0 && rows[i-1].kind == columnOverlayRowMaster {
 			b.BlankLine()
+			b.Line("  " + styleOverlaySectionLabel().Render("Standard Columns"))
 		}
-		if row.kind == columnOverlayRowLabel && i > 0 && rows[i-1].kind == columnOverlayRowBuiltin {
+		if i > 0 && rows[i-1].kind == columnOverlayRowBuiltin && (row.kind == columnOverlayRowLabel || row.kind == columnOverlayRowAdd) {
 			b.BlankLine()
+			b.Line("  " + styleOverlaySectionLabel().Render("Label Columns"))
 		}
 		prefix := "  "
 		if i == m.cursor {

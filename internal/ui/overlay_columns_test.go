@@ -415,6 +415,68 @@ func assertCellHasSecondaryBackground(t *testing.T, canvas *Canvas, x, y int) {
 	}
 }
 
+func TestColumnsOverlayRendersSectionSubheaders(t *testing.T) {
+	overlay := NewColumnsOverlay(nil)
+	overlay.labelColumns = []LabelColumnConfig{
+		{Label: "feature-ui-redesign", DisplayName: "redesign", Enabled: true},
+	}
+	view := stripANSI(overlay.View())
+	lines := strings.Split(view, "\n")
+
+	standardLine := -1
+	labelsLine := -1
+	firstBuiltinLine := -1
+	firstLabelColLine := -1
+	for i, line := range lines {
+		if standardLine < 0 && strings.Contains(line, "Standard Columns") && !strings.Contains(line, "[") {
+			standardLine = i
+		}
+		if labelsLine < 0 && strings.Contains(line, "Label Columns") && !strings.Contains(line, "[") {
+			labelsLine = i
+		}
+		if firstBuiltinLine < 0 && strings.Contains(line, "Last Updated") {
+			firstBuiltinLine = i
+		}
+		if firstLabelColLine < 0 && strings.Contains(line, "feature-ui-redesign") {
+			firstLabelColLine = i
+		}
+	}
+
+	if standardLine < 0 {
+		t.Fatalf("expected 'Standard' sub-header:\n%s", view)
+	}
+	if labelsLine < 0 {
+		t.Fatalf("expected 'Labels' sub-header:\n%s", view)
+	}
+	if standardLine >= firstBuiltinLine {
+		t.Fatalf("'Standard' should appear before first built-in column, standard=%d builtin=%d", standardLine, firstBuiltinLine)
+	}
+	if labelsLine >= firstLabelColLine {
+		t.Fatalf("'Labels' should appear before first label column, labels=%d labelCol=%d", labelsLine, firstLabelColLine)
+	}
+}
+
+func TestColumnsOverlayRendersLabelsHeaderWithNoLabelColumns(t *testing.T) {
+	overlay := NewColumnsOverlay(nil)
+	view := stripANSI(overlay.View())
+	lines := strings.Split(view, "\n")
+
+	if !strings.Contains(view, "Standard Columns") {
+		t.Fatalf("expected 'Standard' sub-header:\n%s", view)
+	}
+
+	found := false
+	for _, line := range lines {
+		if strings.Contains(line, "Label Columns") && !strings.Contains(line, "[") {
+			found = true
+			break
+		}
+	}
+	if !found {
+		t.Fatalf("expected 'Labels' sub-header even with no label columns:\n%s", view)
+	}
+}
+
 func closeUint32(a, b uint32) bool {
 	const tolerance = 0x101
 	if a > b {
