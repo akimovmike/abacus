@@ -353,6 +353,19 @@ func (m *App) applyColumnsOverlayConfig(cfg columnsOverlayConfig) {
 	_ = setConfiguredLabelColumns(cfg.labelColumns)
 	m.recalcVisibleRows()
 	m.updateViewportContent()
+	_ = saveColumnsConfig(cfg)
+}
+
+func saveColumnsConfig(cfg columnsOverlayConfig) error {
+	labels := make([]map[string]any, 0, len(cfg.labelColumns))
+	for _, lc := range cfg.labelColumns {
+		labels = append(labels, map[string]any{
+			"label":       lc.Label,
+			"displayName": lc.DisplayName,
+			"enabled":     lc.Enabled,
+		})
+	}
+	return config.SaveColumns(cfg.showColumns, cfg.builtins, labels)
 }
 
 // handleCreateComplete processes the createCompleteMsg with fast injection support.

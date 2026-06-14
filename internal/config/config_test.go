@@ -1,6 +1,7 @@
 package config
 
 import (
+	"errors"
 	"os"
 	"path/filepath"
 	"testing"
@@ -463,6 +464,153 @@ func TestSaveLayoutToUserConfig(t *testing.T) {
 	}
 	if !contains(string(data), "tall") {
 		t.Fatalf("expected user config to contain 'tall', got:\n%s", data)
+	}
+}
+
+func TestSaveColumnsToProjectConfig(t *testing.T) {
+	reset()
+	t.Cleanup(reset)
+
+	tmp := t.TempDir()
+	projectDir := filepath.Join(tmp, "repo")
+	mustMkdir(t, filepath.Join(projectDir, ".beads"))
+	mustMkdir(t, filepath.Join(projectDir, ".abacus"))
+	projectCfg := filepath.Join(projectDir, ".abacus", "config.yaml")
+
+	writeFile(t, projectCfg, "theme: tokyonight\n")
+
+	oldWd, _ := os.Getwd()
+	_ = os.Chdir(projectDir)
+	defer func() { _ = os.Chdir(oldWd) }()
+
+	userCfg := filepath.Join(tmp, "user.yaml")
+	if err := Initialize(WithWorkingDir(projectDir), WithUserConfig(userCfg)); err != nil {
+		t.Fatalf("Initialize returned error: %v", err)
+	}
+
+	builtins := map[string]bool{
+		KeyTreeColumnsLastUpdated: true,
+		KeyTreeColumnsAssignee:    false,
+		KeyTreeColumnsComments:    true,
+	}
+	labels := []map[string]any{
+		{"label": "bug", "displayName": "B", "enabled": true},
+		{"label": "feature", "displayName": "feat", "enabled": false},
+	}
+
+	if err := SaveColumns(false, builtins, labels); err != nil {
+		t.Fatalf("SaveColumns returned error: %v", err)
+	}
+
+	data, err := os.ReadFile(projectCfg)
+	if err != nil {
+		t.Fatalf("failed to read project config: %v", err)
+	}
+	content := string(data)
+
+	if !contains(content, "theme: tokyonight") {
+		t.Fatalf("expected theme preserved, got:\n%s", content)
+	}
+	if !contains(content, "showcolumns: false") {
+		t.Fatalf("expected showcolumns: false, got:\n%s", content)
+	}
+	if !contains(content, "lastupdated: true") {
+		t.Fatalf("expected lastupdated: true, got:\n%s", content)
+	}
+	if !contains(content, "assignee: false") {
+		t.Fatalf("expected assignee: false, got:\n%s", content)
+	}
+	if !contains(content, "comments: true") {
+		t.Fatalf("expected comments: true, got:\n%s", content)
+	}
+	if !contains(content, "bug") {
+		t.Fatalf("expected label column 'bug', got:\n%s", content)
+	}
+	if !contains(content, "feature") {
+		t.Fatalf("expected label column 'feature', got:\n%s", content)
+	}
+}
+
+func TestSaveColumnsPreservesOtherSettings(t *testing.T) {
+	reset()
+	t.Cleanup(reset)
+
+	tmp := t.TempDir()
+	projectDir := filepath.Join(tmp, "repo")
+	mustMkdir(t, filepath.Join(projectDir, ".beads"))
+	mustMkdir(t, filepath.Join(projectDir, ".abacus"))
+	projectCfg := filepath.Join(projectDir, ".abacus", "config.yaml")
+
+	writeFile(t, projectCfg, "beads:\n    backend: br\ntheme: catppuccin\n")
+
+	oldWd, _ := os.Getwd()
+	_ = os.Chdir(projectDir)
+	defer func() { _ = os.Chdir(oldWd) }()
+
+	userCfg := filepath.Join(tmp, "user.yaml")
+	if err := Initialize(WithWorkingDir(projectDir), WithUserConfig(userCfg)); err != nil {
+		t.Fatalf("Initialize returned error: %v", err)
+	}
+
+	builtins := map[string]bool{
+		KeyTreeColumnsLastUpdated: true,
+		KeyTreeColumnsAssignee:    true,
+		KeyTreeColumnsComments:    true,
+	}
+	if err := SaveColumns(true, builtins, nil); err != nil {
+		t.Fatalf("SaveColumns returned error: %v", err)
+	}
+
+	data, err := os.ReadFile(projectCfg)
+	if err != nil {
+		t.Fatalf("failed to read project config: %v", err)
+	}
+	content := string(data)
+	if !contains(content, "backend: br") {
+		t.Fatalf("expected backend preserved, got:\n%s", content)
+	}
+	if !contains(content, "theme: catppuccin") {
+		t.Fatalf("expected theme preserved, got:\n%s", content)
+	}
+}
+
+func TestSaveColumnsCreatesProjectConfigForLocalProject(t *testing.T) {
+	reset()
+	t.Cleanup(reset)
+
+	tmp := t.TempDir()
+	projectDir := filepath.Join(tmp, "repo")
+	mustMkdir(t, filepath.Join(projectDir, ".beads"))
+	projectCfg := filepath.Join(projectDir, ".abacus", "config.yaml")
+
+	oldWd, _ := os.Getwd()
+	_ = os.Chdir(projectDir)
+	defer func() { _ = os.Chdir(oldWd) }()
+
+	userCfg := filepath.Join(tmp, "user.yaml")
+	if err := Initialize(WithWorkingDir(projectDir), WithUserConfig(userCfg)); err != nil {
+		t.Fatalf("Initialize returned error: %v", err)
+	}
+
+	builtins := map[string]bool{
+		KeyTreeColumnsLastUpdated: false,
+		KeyTreeColumnsAssignee:    true,
+		KeyTreeColumnsComments:    false,
+	}
+	if err := SaveColumns(true, builtins, nil); err != nil {
+		t.Fatalf("SaveColumns returned error: %v", err)
+	}
+
+	data, err := os.ReadFile(projectCfg)
+	if err != nil {
+		t.Fatalf("expected project config to be created: %v", err)
+	}
+	content := string(data)
+	if !contains(content, "showcolumns: true") {
+		t.Fatalf("expected showcolumns in project config, got:\n%s", content)
+	}
+	if _, err := os.Stat(userCfg); !errors.Is(err, os.ErrNotExist) {
+		t.Fatalf("expected user config not to be written, stat err: %v", err)
 	}
 }
 

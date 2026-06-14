@@ -337,7 +337,10 @@ func reset() {
 func ResetForTesting(t interface{ TempDir() string }) func() {
 	reset()
 	tmp := t.TempDir()
-	_ = Initialize(WithWorkingDir(tmp))
+	_ = Initialize(
+		WithWorkingDir(tmp),
+		WithUserConfig(filepath.Join(tmp, "user-config.yaml")),
+	)
 	return reset
 }
 
@@ -455,23 +458,28 @@ func findWritableConfigPath() (string, error) {
 	return defaultUserConfigPath()
 }
 
+func localProjectConfigPath() (string, error) {
+	wd, err := os.Getwd()
+	if err != nil {
+		return "", fmt.Errorf("get working directory: %w", err)
+	}
+
+	beadsDir := findBeadsDir(wd)
+	if beadsDir == "" {
+		return "", fmt.Errorf("no .beads directory found - not a beads project")
+	}
+	return filepath.Join(filepath.Dir(beadsDir), ".abacus", "config.yaml"), nil
+}
+
 // SaveBackend persists the backend name to the project config file.
 // Unlike SaveTheme(), this ALWAYS saves to project config (.abacus/config.yaml)
 // because backend selection is inherently per-project.
 // Returns error if no .beads directory is found (not a beads project).
 func SaveBackend(backend string) error {
-	wd, err := os.Getwd()
+	targetPath, err := localProjectConfigPath()
 	if err != nil {
-		return fmt.Errorf("get working directory: %w", err)
+		return err
 	}
-
-	// Find .beads/ directory to locate project root
-	beadsDir := findBeadsDir(wd)
-	if beadsDir == "" {
-		return fmt.Errorf("no .beads directory found - not a beads project")
-	}
-	projectRoot := filepath.Dir(beadsDir)
-	targetPath := filepath.Join(projectRoot, ".abacus", "config.yaml")
 
 	// Create a fresh viper instance for this file only
 	v := viper.New()
@@ -527,6 +535,43 @@ func SaveBdUnsupportedVersionWarned() error {
 	}
 
 	// Write config
+	if err := v.WriteConfigAs(targetPath); err != nil {
+		return fmt.Errorf("write config: %w", err)
+	}
+
+	return nil
+}
+
+// SaveColumns persists column configuration to the local project config file.
+// Column layout is project-specific, so this creates .abacus/config.yaml when
+// the current working directory is inside a beads project.
+func SaveColumns(showColumns bool, builtins map[string]bool, labelColumns []map[string]any) error {
+	targetPath, err := localProjectConfigPath()
+	if err != nil {
+		return err
+	}
+
+	v := viper.New()
+	v.SetConfigType("yaml")
+	v.SetConfigFile(targetPath)
+	_ = v.ReadInConfig()
+
+	v.Set(KeyTreeShowColumns, showColumns)
+	for key, enabled := range builtins {
+		v.Set(key, enabled)
+	}
+	if labelColumns != nil {
+		v.Set(KeyTreeLabelColumns, labelColumns)
+	} else {
+		v.Set(KeyTreeLabelColumns, []map[string]any{})
+	}
+
+	dir := filepath.Dir(targetPath)
+	//nolint:gosec // G301: Config directory needs standard permissions
+	if err := os.MkdirAll(dir, 0755); err != nil {
+		return fmt.Errorf("create config directory: %w", err)
+	}
+
 	if err := v.WriteConfigAs(targetPath); err != nil {
 		return fmt.Errorf("write config: %w", err)
 	}

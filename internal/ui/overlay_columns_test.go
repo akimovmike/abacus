@@ -4,13 +4,14 @@ import (
 	"strings"
 	"testing"
 
+	"abacus/internal/config"
 	"abacus/internal/ui/theme"
 
 	tea "github.com/charmbracelet/bubbletea"
 )
 
 func TestColumnsOverlayRendersMasterToggleAsCheckbox(t *testing.T) {
-	overlay := NewColumnsOverlay(nil)
+	overlay := newColumnsOverlayForTest(t, nil)
 	view := stripANSI(overlay.View())
 
 	if !strings.Contains(view, "[x] Show columns") {
@@ -27,7 +28,7 @@ func TestColumnsOverlayRendersMasterToggleAsCheckbox(t *testing.T) {
 }
 
 func TestColumnsOverlayFooterHintsFollowCurrentRowKind(t *testing.T) {
-	overlay := NewColumnsOverlay(nil)
+	overlay := newColumnsOverlayForTest(t, nil)
 	overlay.labelColumns = []LabelColumnConfig{
 		{Label: "feature-ui-redesign", DisplayName: "redesign", Enabled: true},
 	}
@@ -64,7 +65,7 @@ func TestColumnsOverlayFooterHintsFollowCurrentRowKind(t *testing.T) {
 }
 
 func TestColumnsOverlaySeparatesMasterToggleAndColumnRows(t *testing.T) {
-	overlay := NewColumnsOverlay(nil)
+	overlay := newColumnsOverlayForTest(t, nil)
 	lines := strings.Split(stripANSI(overlay.View()), "\n")
 
 	masterLine := -1
@@ -89,7 +90,7 @@ func TestColumnsOverlaySeparatesMasterToggleAndColumnRows(t *testing.T) {
 }
 
 func TestColumnsOverlaySeparatesBuiltinAndLabelColumns(t *testing.T) {
-	overlay := NewColumnsOverlay(nil)
+	overlay := newColumnsOverlayForTest(t, nil)
 	overlay.labelColumns = []LabelColumnConfig{
 		{Label: "feature-ui-redesign", DisplayName: "redesign", Enabled: true},
 	}
@@ -116,6 +117,12 @@ func TestColumnsOverlaySeparatesBuiltinAndLabelColumns(t *testing.T) {
 	t.Fatalf("expected blank visual separator between built-in and label columns:\n%s", stripANSI(overlay.View()))
 }
 
+func newColumnsOverlayForTest(t *testing.T, labels []string) *ColumnsOverlay {
+	t.Helper()
+	t.Cleanup(config.ResetForTesting(t))
+	return NewColumnsOverlay(labels)
+}
+
 func assertFooterHints(t *testing.T, got, want []footerHint) {
 	t.Helper()
 	if len(got) != len(want) {
@@ -129,7 +136,7 @@ func assertFooterHints(t *testing.T, got, want []footerHint) {
 }
 
 func TestColumnsOverlayAddsLabelColumnWithDefaultDisplayName(t *testing.T) {
-	overlay := NewColumnsOverlay([]string{"backend", "feature-ui-redesign"})
+	overlay := newColumnsOverlayForTest(t, []string{"backend", "feature-ui-redesign"})
 	overlay.cursor = len(overlay.rows()) - 1
 
 	updated, cmd := overlay.Update(tea.KeyMsg{Type: tea.KeyEnter})
@@ -172,7 +179,7 @@ func TestColumnsOverlayAddsLabelColumnWithDefaultDisplayName(t *testing.T) {
 }
 
 func TestColumnsOverlayTypingAfterAddReplacesSuggestedDisplayName(t *testing.T) {
-	overlay := NewColumnsOverlay([]string{"feature-ui-redesign"})
+	overlay := newColumnsOverlayForTest(t, []string{"feature-ui-redesign"})
 	overlay.cursor = len(overlay.rows()) - 1
 
 	updated, _ := overlay.Update(tea.KeyMsg{Type: tea.KeyEnter})
@@ -193,7 +200,7 @@ func TestColumnsOverlayTypingAfterAddReplacesSuggestedDisplayName(t *testing.T) 
 }
 
 func TestColumnsOverlayEditsAndRemovesLabelColumn(t *testing.T) {
-	overlay := NewColumnsOverlay(nil)
+	overlay := newColumnsOverlayForTest(t, nil)
 	overlay.labelColumns = []LabelColumnConfig{
 		{Label: "ui-redesign", DisplayName: "redesign", Enabled: true},
 	}
@@ -232,7 +239,7 @@ func TestColumnsOverlayEditsAndRemovesLabelColumn(t *testing.T) {
 }
 
 func TestColumnsOverlayEscFromEditingReturnsToMainView(t *testing.T) {
-	overlay := NewColumnsOverlay(nil)
+	overlay := newColumnsOverlayForTest(t, nil)
 	overlay.labelColumns = []LabelColumnConfig{
 		{Label: "ui-redesign", DisplayName: "redesign", Enabled: true},
 	}
@@ -258,7 +265,7 @@ func TestColumnsOverlayEscFromEditingReturnsToMainView(t *testing.T) {
 }
 
 func TestColumnsOverlayEscFromAddingReturnsToMainView(t *testing.T) {
-	overlay := NewColumnsOverlay([]string{"backend"})
+	overlay := newColumnsOverlayForTest(t, []string{"backend"})
 	overlay.cursor = len(overlay.rows()) - 1
 
 	updated, _ := overlay.Update(tea.KeyMsg{Type: tea.KeyEnter})
@@ -281,7 +288,7 @@ func TestColumnsOverlayEscFromAddingReturnsToMainView(t *testing.T) {
 }
 
 func TestColumnsOverlayEscFromMainViewClosesOverlay(t *testing.T) {
-	overlay := NewColumnsOverlay(nil)
+	overlay := newColumnsOverlayForTest(t, nil)
 
 	updated, cmd := overlay.Update(tea.KeyMsg{Type: tea.KeyEscape})
 	overlay = updated
@@ -294,7 +301,7 @@ func TestColumnsOverlayEscFromMainViewClosesOverlay(t *testing.T) {
 }
 
 func TestColumnsOverlayFooterHintsInEditingAndAddingModes(t *testing.T) {
-	overlay := NewColumnsOverlay([]string{"backend"})
+	overlay := newColumnsOverlayForTest(t, []string{"backend"})
 	overlay.labelColumns = []LabelColumnConfig{
 		{Label: "ui-redesign", DisplayName: "redesign", Enabled: true},
 	}
@@ -315,7 +322,7 @@ func TestColumnsOverlayFooterHintsInEditingAndAddingModes(t *testing.T) {
 }
 
 func TestColumnsOverlayLabelRowRendersPillAndBracketedDisplayName(t *testing.T) {
-	overlay := NewColumnsOverlay(nil)
+	overlay := newColumnsOverlayForTest(t, nil)
 	overlay.labelColumns = []LabelColumnConfig{
 		{Label: "ready-for-agent", DisplayName: "agent", Enabled: true},
 	}
@@ -339,7 +346,7 @@ func TestColumnsOverlayLabelSeparatorKeepsOverlayBackground(t *testing.T) {
 		t.Fatal("expected dracula theme to be registered")
 	}
 
-	overlay := NewColumnsOverlay(nil)
+	overlay := newColumnsOverlayForTest(t, nil)
 	overlay.labelColumns = []LabelColumnConfig{
 		{Label: "ready-for-agent", DisplayName: "agent", Enabled: true},
 	}
@@ -416,7 +423,7 @@ func assertCellHasSecondaryBackground(t *testing.T, canvas *Canvas, x, y int) {
 }
 
 func TestColumnsOverlayRendersSectionSubheaders(t *testing.T) {
-	overlay := NewColumnsOverlay(nil)
+	overlay := newColumnsOverlayForTest(t, nil)
 	overlay.labelColumns = []LabelColumnConfig{
 		{Label: "feature-ui-redesign", DisplayName: "redesign", Enabled: true},
 	}
@@ -457,7 +464,7 @@ func TestColumnsOverlayRendersSectionSubheaders(t *testing.T) {
 }
 
 func TestColumnsOverlayRendersLabelsHeaderWithNoLabelColumns(t *testing.T) {
-	overlay := NewColumnsOverlay(nil)
+	overlay := newColumnsOverlayForTest(t, nil)
 	view := stripANSI(overlay.View())
 	lines := strings.Split(view, "\n")
 

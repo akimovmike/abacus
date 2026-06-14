@@ -2,6 +2,8 @@ package ui
 
 import (
 	"errors"
+	"os"
+	"path/filepath"
 	"strings"
 	"testing"
 	"time"
@@ -125,9 +127,10 @@ func TestHelpOverlayInView(t *testing.T) {
 }
 
 func TestColumnsKeyOpensColumnsOverlay(t *testing.T) {
-	restoreColumnsConfig := captureColumnConfig(t)
-	t.Cleanup(restoreColumnsConfig)
-	_ = config.Set(config.KeyTreeShowColumns, true)
+	t.Cleanup(config.ResetForTesting(t))
+	if err := config.Set(config.KeyTreeShowColumns, true); err != nil {
+		t.Fatalf("failed to set column visibility: %v", err)
+	}
 
 	node := &graph.Node{
 		Issue: beads.FullIssue{ID: "ab-col", Title: "Column Config", Status: "open"},
@@ -156,9 +159,10 @@ func TestColumnsKeyOpensColumnsOverlay(t *testing.T) {
 }
 
 func TestColumnsOverlayAppliesMasterToggleImmediately(t *testing.T) {
-	restoreColumnsConfig := captureColumnConfig(t)
-	t.Cleanup(restoreColumnsConfig)
-	_ = config.Set(config.KeyTreeShowColumns, true)
+	projectCfg := setupColumnsPersistenceProject(t)
+	if err := config.Set(config.KeyTreeShowColumns, true); err != nil {
+		t.Fatalf("failed to set column visibility: %v", err)
+	}
 
 	app := &App{
 		keys:        DefaultKeyMap(),
@@ -177,6 +181,13 @@ func TestColumnsOverlayAppliesMasterToggleImmediately(t *testing.T) {
 	if config.GetBool(config.KeyTreeShowColumns) {
 		t.Fatal("expected master toggle to update config immediately")
 	}
+	data, err := os.ReadFile(projectCfg)
+	if err != nil {
+		t.Fatalf("expected column toggle to create project config: %v", err)
+	}
+	if !strings.Contains(string(data), "showcolumns: false") {
+		t.Fatalf("expected column visibility persisted to project config, got:\n%s", data)
+	}
 	if app.activeOverlay != OverlayColumns {
 		t.Fatalf("expected overlay to stay open after toggle, got %v", app.activeOverlay)
 	}
@@ -193,6 +204,17 @@ func TestColumnsOverlayAppliesMasterToggleImmediately(t *testing.T) {
 	if config.GetBool(config.KeyTreeShowColumns) {
 		t.Fatal("expected Esc not to undo the instant toggle")
 	}
+}
+
+func setupColumnsPersistenceProject(t *testing.T) string {
+	t.Helper()
+	projectDir := filepath.Join(t.TempDir(), "repo")
+	if err := os.MkdirAll(filepath.Join(projectDir, ".beads"), 0755); err != nil {
+		t.Fatalf("create .beads directory: %v", err)
+	}
+	t.Cleanup(changeWorkingDir(t, projectDir))
+	t.Cleanup(config.ResetForTesting(t))
+	return filepath.Join(projectDir, ".abacus", "config.yaml")
 }
 
 func TestStatusOverlayKeepsBaseContentVisible(t *testing.T) {
