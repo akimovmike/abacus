@@ -7,6 +7,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added
+- Configurable tree columns. Press `C` to open a Columns overlay where you can toggle built-in columns, add a column for any label, and rename its display name. Changes apply instantly and persist per project in `.abacus/config.yaml` (ab-mk2y)
+
+### Changed
+- Support the br v0.2.x backend (bd-32ab)
+
 ## [0.11.1] - 2026-06-08
 
 ### Fixed
