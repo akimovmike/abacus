@@ -226,7 +226,7 @@ Items within each section are sorted intelligently:
 
 ### Search & Filtering
 
-- Press `/` to search; results update live while you type. `Esc` clears the filter.
+- Press `/` to search; results update live while you type. `Esc` clears the filter, and Backspace exits search when the field is empty.
 - Collapsed nodes show `[+N]` to indicate the number of hidden children.
 - The statistics bar (top row) always reflects the currently visible issues.
 
@@ -288,6 +288,7 @@ export AB_SKIP_UPDATE_CHECK=true
 |--------|------|-------------|
 | Search | `/` | Enter search mode |
 | Clear/Cancel | `Esc` | Clear search or close overlay |
+| Exit Empty Search | `Backspace` | Exit search mode when the search field is empty |
 | Quit | `q` or `Ctrl+C` | Exit application |
 
 Detail panel focused shortcuts: `↑/↓` or `j/k` scroll, `Ctrl+F/B` or `PgDn/Up` page, `g/G` or `Home/End` jump.

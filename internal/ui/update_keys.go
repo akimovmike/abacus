@@ -52,25 +52,6 @@ func (m *App) handleKeyMsg(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 	return m.handleGlobalKey(msg)
 }
 
-// handleSearchKey processes keys when in search mode.
-func (m *App) handleSearchKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
-	switch {
-	case key.Matches(msg, m.keys.Enter):
-		m.searching = false
-		m.textInput.Blur()
-		return m, nil
-	case key.Matches(msg, m.keys.Escape):
-		m.clearSearchFilter()
-		return m, nil
-	default:
-		var cmd tea.Cmd
-		m.textInput, cmd = m.textInput.Update(msg)
-		m.setFilterText(m.textInput.Value())
-		m.recalcVisibleRows()
-		return m, cmd
-	}
-}
-
 // delegateToOverlay forwards key events to the active overlay.
 // Returns (cmd, handled) where handled indicates if an overlay processed the key.
 func (m *App) delegateToOverlay(msg tea.KeyMsg) (tea.Cmd, bool) {

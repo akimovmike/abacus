@@ -64,6 +64,20 @@ func TestUpdateClearsFilterWithEsc(t *testing.T) {
 			t.Fatalf("expected input cleared, got %q", m.textInput.Value())
 		}
 	})
+
+	t.Run("backspaceWhileEmptySearchExitsSearch", func(t *testing.T) {
+		m := buildApp("", true)
+		_, _ = m.Update(tea.KeyMsg{Type: tea.KeyBackspace})
+		if m.searching {
+			t.Fatalf("expected searching to be disabled after empty backspace")
+		}
+		if m.activeOverlay != OverlayNone {
+			t.Fatalf("expected empty backspace not to open overlay, got %v", m.activeOverlay)
+		}
+		if m.filterText != "" {
+			t.Fatalf("expected filter to remain empty after empty backspace, got %s", m.filterText)
+		}
+	})
 }
 
 func TestClearFilterPreservesSelectionSingleParent(t *testing.T) {

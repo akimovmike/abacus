@@ -46,6 +46,29 @@ func (m *App) clearSearchFilter() {
 	m.updateViewportContent()
 }
 
+// handleSearchKey processes keys when in search mode.
+func (m *App) handleSearchKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
+	switch {
+	case key.Matches(msg, m.keys.Enter):
+		m.searching = false
+		m.textInput.Blur()
+		return m, nil
+	case key.Matches(msg, m.keys.Escape):
+		m.clearSearchFilter()
+		return m, nil
+	case key.Matches(msg, m.keys.Backspace) && m.textInput.Value() == "":
+		m.searching = false
+		m.textInput.Blur()
+		return m, nil
+	default:
+		var cmd tea.Cmd
+		m.textInput, cmd = m.textInput.Update(msg)
+		m.setFilterText(m.textInput.Value())
+		m.recalcVisibleRows()
+		return m, cmd
+	}
+}
+
 func (m *App) setFilterText(value string) {
 	if m.filterText == value {
 		return
