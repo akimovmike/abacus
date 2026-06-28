@@ -11,6 +11,8 @@ import (
 	"fmt"
 	"strings"
 
+	appErrors "abacus/internal/errors"
+
 	_ "modernc.org/sqlite" // Pure Go SQLite driver, WAL-friendly
 )
 
@@ -28,11 +30,7 @@ type bdSQLiteClient struct {
 // FROZEN: Use NewBrSQLiteClient for new development.
 func NewBdSQLiteClient(dbPath string, opts ...BdCLIOption) Client {
 	trimmed := strings.TrimSpace(dbPath)
-	if trimmed == "" {
-		// Unlike the old NewSQLiteClient, we don't fall back to pure CLI.
-		// A valid dbPath is required for SQLite client.
-		panic("NewBdSQLiteClient requires a non-empty dbPath; use NewBdCLIClient for CLI-only operations")
-	}
+	appErrors.Must(trimmed != "", "NewBdSQLiteClient requires a non-empty dbPath; use NewBdCLIClient for CLI-only operations")
 	dsn := buildSQLiteDSN(trimmed)
 	// Ensure writes go to the same DB when the CLI is used for mutations.
 	opts = append(opts, WithBdDatabasePath(trimmed))

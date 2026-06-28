@@ -2,6 +2,7 @@ package ui
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"os"
 	"path/filepath"
@@ -94,6 +95,7 @@ type Config struct {
 	Version         string // Version string to display in header
 	UpdateChan      <-chan *update.UpdateInfo
 	Backend         string // Backend type: "bd" or "br"
+	StorePath       string // Path watched for refresh (db file or dolt store dir)
 }
 
 // errorSource tracks where the last error originated so refresh success can
@@ -280,33 +282,31 @@ func NewApp(cfg Config) (*App, error) {
 
 	reporter := cfg.StartupReporter
 	if reporter != nil {
-		reporter.Stage(StartupStageFindingDatabase, "Finding Beads database...")
-	}
-
-	dbPath, dbModTime, dbErr := FindBeadsDB()
-	if reporter != nil && dbPath != "" && dbErr == nil {
-		reporter.Stage(StartupStageFindingDatabase, fmt.Sprintf("Using database at %s", dbPath))
-	}
-
-	// If no database found and no client was injected (e.g., for tests), fail early
-	// with a helpful error message telling the user how to set up beads.
-	if dbErr != nil && cfg.Client == nil {
-		return nil, dbErr
+		reporter.Stage(StartupStageFindingDatabase, "Finding Beads workspace...")
 	}
 
 	client := cfg.Client
+	storePath := cfg.StorePath
 	if client == nil {
 		var err error
-		client, err = beads.NewClientForBackend(cfg.Backend, dbPath)
+		client, storePath, err = resolveClientAndStorePath(cfg.Backend, reporter)
 		if err != nil {
-			return nil, fmt.Errorf("create client for backend %q: %w", cfg.Backend, err)
+			return nil, err
 		}
 	}
 
 	roots, err := loadData(context.Background(), client, reporter)
-	if err != nil {
+	if err != nil && !errors.Is(err, ErrNoIssues) {
 		return nil, err
 	}
+
+	var modTime time.Time
+	if storePath != "" {
+		if latest, err := latestModTimeForDB(storePath); err == nil {
+			modTime = latest
+		}
+	}
+
 	ti := textinput.New()
 	ti.Placeholder = "Search..."
 	ti.Prompt = "/"
@@ -322,31 +322,26 @@ func NewApp(cfg Config) (*App, error) {
 		repo = filepath.Base(wd)
 	}
 
-	autoRefresh := cfg.AutoRefresh
-	if dbErr != nil {
-		autoRefresh = false
-	}
-
 	app := &App{
 		roots:           roots,
 		textInput:       ti,
 		repoName:        repo,
 		focus:           FocusTree,
 		refreshInterval: cfg.RefreshInterval,
-		autoRefresh:     autoRefresh,
+		autoRefresh:     cfg.AutoRefresh && storePath != "",
 		outputFormat:    cfg.OutputFormat,
 		version:         cfg.Version,
 		backend:         cfg.Backend,
 		client:          client,
-		dbPath:          dbPath,
-		lastDBModTime:   dbModTime,
+		dbPath:          storePath,
+		lastDBModTime:   modTime,
 		spinner:         s,
 		keys:            DefaultKeyMap(),
 		sessionStart:    time.Now(),
 		updateChan:      cfg.UpdateChan,
 	}
-	if dbErr != nil {
-		app.lastRefreshStats = fmt.Sprintf("refresh unavailable: %v", dbErr)
+	if storePath == "" {
+		app.lastRefreshStats = "refresh unavailable: no store path"
 	}
 	if config.GetString(config.KeyLayoutMode) == "tall" {
 		app.layout = LayoutTall
@@ -359,6 +354,52 @@ func NewApp(cfg Config) (*App, error) {
 		reporter.Stage(StartupStageReady, "Ready!")
 	}
 	return app, nil
+}
+
+// resolveClientAndStorePath is a fallback for tests and standalone use when no
+// client is injected. Production callers should resolve the store in main.go.
+func resolveClientAndStorePath(backend string, reporter StartupReporter) (beads.Client, string, error) {
+	workDir, beadsDir, err := FindBeadsWorkdir()
+	if err != nil {
+		return nil, "", err
+	}
+	if reporter != nil {
+		reporter.Stage(StartupStageFindingDatabase, fmt.Sprintf("Using workspace at %s", beadsDir))
+	}
+	if backend == "" {
+		backend = beads.BackendBd
+	}
+	ctx, _ := beads.ProbeContext(context.Background(), backend, workDir)
+
+	switch ctx.Kind {
+	case beads.StoreKindDolt:
+		desc := beads.StoreDescriptor{Kind: beads.StoreKindDolt, WorkDir: workDir}
+		client, err := beads.NewClientForBackend(backend, desc, ctx)
+		if err != nil {
+			return nil, "", fmt.Errorf("create client for backend %q: %w", backend, err)
+		}
+		return client, doltStorePath(beadsDir), nil
+	case beads.StoreKindSQLite:
+		dbPath := filepath.Join(beadsDir, "beads.db")
+		desc := beads.StoreDescriptor{Kind: beads.StoreKindSQLite, DBPath: dbPath}
+		client, err := beads.NewClientForBackend(backend, desc, ctx)
+		if err != nil {
+			return nil, "", fmt.Errorf("create client for backend %q: %w", backend, err)
+		}
+		return client, dbPath, nil
+	}
+	return nil, "", fmt.Errorf("could not determine store kind for %s", beadsDir)
+}
+
+// doltStorePath returns the directory to watch for Dolt store changes.
+func doltStorePath(beadsDir string) string {
+	for _, name := range []string{"embeddeddolt", "dolt"} {
+		candidate := filepath.Join(beadsDir, name)
+		if info, err := os.Stat(candidate); err == nil && info.IsDir() {
+			return candidate
+		}
+	}
+	return beadsDir
 }
 
 func (m *App) Init() tea.Cmd {

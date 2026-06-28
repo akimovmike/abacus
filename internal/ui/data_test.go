@@ -2,6 +2,7 @@ package ui
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"testing"
 
@@ -18,7 +19,7 @@ func TestLoadDataUsesExport(t *testing.T) {
 	}
 	mock.CommentsFn = func(ctx context.Context, issueID string) ([]beads.Comment, error) {
 		return []beads.Comment{
-			{ID: 1, IssueID: issueID, Author: "tester", Text: "hi", CreatedAt: "2024-01-01T00:00:00Z"},
+			{ID: "1", IssueID: issueID, Author: "tester", Text: "hi", CreatedAt: "2024-01-01T00:00:00Z"},
 		}, nil
 	}
 
@@ -46,7 +47,7 @@ func TestLoadDataDoesNotPreloadComments(t *testing.T) {
 	}
 	mock.CommentsFn = func(ctx context.Context, issueID string) ([]beads.Comment, error) {
 		return []beads.Comment{
-			{ID: 1, IssueID: issueID, Author: "tester", Text: "hi", CreatedAt: "2024-01-01T00:00:00Z"},
+			{ID: "1", IssueID: issueID, Author: "tester", Text: "hi", CreatedAt: "2024-01-01T00:00:00Z"},
 		}, nil
 	}
 
@@ -73,14 +74,14 @@ func TestLoadDataReturnsErrorWhenNoIssues(t *testing.T) {
 	}
 }
 
-func TestLoadDataReturnsNilForEmptyExport(t *testing.T) {
+func TestLoadDataReturnsErrNoIssuesForEmptyExport(t *testing.T) {
 	mock := beads.NewMockClient()
 	mock.ExportFn = func(ctx context.Context) ([]beads.FullIssue, error) {
 		return []beads.FullIssue{}, nil
 	}
 	roots, err := loadData(context.Background(), mock, nil)
-	if err != nil {
-		t.Fatalf("expected no error, got %v", err)
+	if !errors.Is(err, ErrNoIssues) {
+		t.Fatalf("expected ErrNoIssues, got %v", err)
 	}
 	if roots != nil {
 		t.Fatalf("expected nil roots for empty database, got %v", roots)

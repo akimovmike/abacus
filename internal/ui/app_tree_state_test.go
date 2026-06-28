@@ -358,7 +358,7 @@ func TestPreloadAllComments(t *testing.T) {
 		client := beads.NewMockClient()
 		client.CommentsFn = func(ctx context.Context, issueID string) ([]beads.Comment, error) {
 			return []beads.Comment{
-				{ID: 1, IssueID: issueID, Author: "tester", Text: "hi", CreatedAt: time.Now().UTC().Format(time.RFC3339)},
+				{ID: "1", IssueID: issueID, Author: "tester", Text: "hi", CreatedAt: time.Now().UTC().Format(time.RFC3339)},
 			}, nil
 		}
 
@@ -508,7 +508,7 @@ func TestLoadCommentsInBackgroundUpdatesNodes(t *testing.T) {
 	client := beads.NewMockClient()
 	client.CommentsFn = func(ctx context.Context, issueID string) ([]beads.Comment, error) {
 		return []beads.Comment{
-			{ID: 1, IssueID: issueID, Author: "tester", Text: "test comment", CreatedAt: time.Now().UTC().Format(time.RFC3339)},
+			{ID: "1", IssueID: issueID, Author: "tester", Text: "test comment", CreatedAt: time.Now().UTC().Format(time.RFC3339)},
 		}, nil
 	}
 
@@ -596,7 +596,7 @@ func TestCommentLoadedMsgRefreshesDetailPane(t *testing.T) {
 		t.Fatal("expected initial detail view to show loading state")
 	}
 
-	comment := beads.Comment{ID: 1, IssueID: root.Issue.ID, Author: "tester", Text: "detail loaded", CreatedAt: time.Now().UTC().Format(time.RFC3339)}
+	comment := beads.Comment{ID: "1", IssueID: root.Issue.ID, Author: "tester", Text: "detail loaded", CreatedAt: time.Now().UTC().Format(time.RFC3339)}
 	model, _ := app.Update(commentLoadedMsg{
 		issueID:  root.Issue.ID,
 		comments: []beads.Comment{comment},

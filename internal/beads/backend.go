@@ -15,6 +15,7 @@ import (
 	"golang.org/x/term"
 
 	"abacus/internal/config"
+	appErrors "abacus/internal/errors"
 )
 
 // versionCheckTimeout is the timeout for each backend version check subprocess.
@@ -31,10 +32,6 @@ const (
 
 // MinBrVersion defines the minimum supported br CLI version.
 const MinBrVersion = "0.1.7"
-
-// MaxSupportedBdVersion defines the maximum officially supported bd CLI version.
-// Versions above this trigger a one-time warning (abacus development focuses on br).
-const MaxSupportedBdVersion = "0.38.0"
 
 // ErrNoBackendAvailable indicates neither bd nor br was found on PATH.
 var ErrNoBackendAvailable = errors.New("neither bd nor br found in PATH")
@@ -358,75 +355,59 @@ func isInteractiveTTY() bool {
 	return term.IsTerminal(int(fd))
 }
 
-// NewClientForBackend creates the appropriate Client based on backend string.
-// backend must be "bd" or "br". dbPath is the path to the SQLite database.
-// Returns an error for unknown backends or empty dbPath.
-func NewClientForBackend(backend, dbPath string) (Client, error) {
-	if dbPath == "" {
-		return nil, fmt.Errorf("dbPath is required")
-	}
-	switch backend {
-	case BackendBd:
-		return NewBdSQLiteClient(dbPath), nil
-	case BackendBr:
-		return NewBrSQLiteClient(dbPath), nil
-	default:
-		return nil, fmt.Errorf("unknown backend: %q (must be %q or %q)", backend, BackendBd, BackendBr)
-	}
+// StoreDescriptor identifies which on-disk store to read from.
+type StoreDescriptor struct {
+	Kind    StoreKind
+	WorkDir string // required for StoreKindDolt
+	DBPath  string // required for StoreKindSQLite
 }
 
-// CheckBdVersionWarning shows a one-time warning if bd version > MaxSupportedBdVersion.
-// The warning is non-blocking and only shown once per user (stored in ~/.abacus/config.yaml).
-// Call this after DetectBackend returns "bd" successfully.
-func CheckBdVersionWarning() {
-	// Only applies to bd backend
-	// Check if warning already shown
-	if config.GetBool(config.KeyBdUnsupportedVersionWarnShown) {
-		return
+// NewClientForBackend creates the appropriate Client based on the resolved
+// binary backend and store descriptor. It requires both backend and store
+// kind to be resolved before construction (invariant #2 / G1).
+func NewClientForBackend(backend string, desc StoreDescriptor, ctx BackendContext) (Client, error) {
+	if err := appErrors.Require(backend == BackendBd || backend == BackendBr,
+		fmt.Sprintf("backend must be resolved (got %q)", backend)); err != nil {
+		return nil, err
+	}
+	if err := appErrors.Require(desc.Kind != StoreKindUnknown,
+		"store kind must be resolved before constructing client"); err != nil {
+		return nil, err
 	}
 
-	// Get bd version (create own timeout - this is a non-critical check)
-	ctx, cancel := context.WithTimeout(context.Background(), versionCheckTimeout)
-	defer cancel()
-
-	info, err := CheckVersion(ctx, VersionCheckOptions{
-		Bin:        BackendBd,
-		MinVersion: MinBeadsVersion,
-	})
-	if err != nil {
-		// Version check failed - don't show warning (probably already shown error elsewhere)
-		return
+	switch backend {
+	case BackendBd:
+		switch desc.Kind {
+		case StoreKindDolt:
+			return NewBdDoltClient(desc.WorkDir), nil
+		case StoreKindSQLite:
+			return NewBdSQLiteClient(desc.DBPath), nil
+		}
+	case BackendBr:
+		switch desc.Kind {
+		case StoreKindDolt:
+			return NewBrDoltClient(desc.WorkDir), nil
+		case StoreKindSQLite:
+			return NewBrSQLiteClient(desc.DBPath), nil
+		}
 	}
+	return nil, fmt.Errorf("unknown backend: %q (must be %q or %q)", backend, BackendBd, BackendBr)
+}
 
-	// Compare with max supported version
-	installedSemver, _, err := parseSemver(info.Installed)
-	if err != nil {
-		return
-	}
-	maxSemver, _, err := parseSemver(MaxSupportedBdVersion)
-	if err != nil {
-		return
-	}
+// SupportedSchemaVersion is the only beads schema version abacus currently
+// understands. Bumped only when a schema change breaks field compatibility.
+const SupportedSchemaVersion = 1
 
-	// If installed version <= max supported, no warning needed
-	if installedSemver.compare(maxSemver) <= 0 {
-		return
+// ValidateSchemaVersion returns an error if the context's schema version is
+// incompatible. A value of zero means the binary did not report a version
+// (legacy SQLite bd/br) and is allowed.
+func ValidateSchemaVersion(ctx BackendContext) error {
+	if ctx.SchemaVersion == 0 {
+		return nil
 	}
-
-	// Show one-time warning
-	fmt.Printf("\n")
-	fmt.Printf("Note: abacus officially supports beads (bd) up to version %s.\n", MaxSupportedBdVersion)
-	fmt.Printf("You have version %s installed. Newer versions may work but are\n", info.Installed)
-	fmt.Printf("not officially supported.\n")
-	fmt.Printf("\n")
-	fmt.Printf("Future development is focused on beads_rust (br):\n")
-	fmt.Printf("https://github.com/Dicklesworthstone/beads_rust\n")
-	fmt.Printf("\n")
-	fmt.Printf("This message will not be shown again.\n")
-	fmt.Printf("\n")
-
-	// Save flag to prevent showing again
-	if err := config.SaveBdUnsupportedVersionWarned(); err != nil {
-		log.Printf("warning: could not save bd version warning flag: %v", err)
+	if ctx.SchemaVersion != SupportedSchemaVersion {
+		return appErrors.New(appErrors.CodeConfigurationError,
+			fmt.Sprintf("unsupported beads schema version: %d (supported: %d)", ctx.SchemaVersion, SupportedSchemaVersion), nil)
 	}
+	return nil
 }

@@ -34,7 +34,7 @@ func TestRunWithRuntimeSpinnerLifecycle(t *testing.T) {
 		return prog
 	}, func() startupAnimator {
 		return spinner
-	})
+	}, nil, "")
 	if err != nil {
 		t.Fatalf("runWithRuntime returned error: %v", err)
 	}
@@ -57,7 +57,7 @@ func TestRunWithRuntimeStopsSpinnerOnBuilderError(t *testing.T) {
 		return nil
 	}, func() startupAnimator {
 		return spinner
-	})
+	}, nil, "")
 	if err == nil {
 		t.Fatal("expected error from builder")
 	}
@@ -219,7 +219,7 @@ func TestRunWithRuntimePassesBackendToConfig(t *testing.T) {
 				return prog
 			}, func() startupAnimator {
 				return spinner
-			})
+			}, nil, "")
 			if err != nil {
 				t.Fatalf("runWithRuntime returned error: %v", err)
 			}

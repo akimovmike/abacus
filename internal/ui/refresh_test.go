@@ -15,8 +15,8 @@ func TestCollectCommentState(t *testing.T) {
 				ID:    "ab-001",
 				Title: "Root Issue",
 				Comments: []beads.Comment{
-					{ID: 1, Text: "comment 1"},
-					{ID: 2, Text: "comment 2"},
+					{ID: "1", Text: "comment 1"},
+					{ID: "2", Text: "comment 2"},
 				},
 			},
 			CommentsLoaded: true,
@@ -26,7 +26,7 @@ func TestCollectCommentState(t *testing.T) {
 						ID:    "ab-002",
 						Title: "Child Issue",
 						Comments: []beads.Comment{
-							{ID: 3, Text: "child comment"},
+							{ID: "3", Text: "child comment"},
 						},
 					},
 					CommentsLoaded: true,
@@ -105,7 +105,7 @@ func TestTransferCommentState(t *testing.T) {
 	oldState := map[string]commentState{
 		"ab-001": {
 			comments: []beads.Comment{
-				{ID: 1, Text: "preserved comment"},
+				{ID: "1", Text: "preserved comment"},
 			},
 			commentsLoaded: true,
 		},
@@ -155,7 +155,7 @@ func TestTransferCommentState(t *testing.T) {
 func TestTransferCommentStateKeepsFreshExportedComments(t *testing.T) {
 	oldState := map[string]commentState{
 		"ab-001": {
-			comments:       []beads.Comment{{ID: 1, Text: "old comment"}},
+			comments:       []beads.Comment{{ID: "1", Text: "old comment"}},
 			commentsLoaded: true,
 		},
 	}
@@ -164,7 +164,7 @@ func TestTransferCommentStateKeepsFreshExportedComments(t *testing.T) {
 			Issue: beads.FullIssue{
 				ID:       "ab-001",
 				Title:    "Issue 1",
-				Comments: []beads.Comment{{ID: 2, Text: "fresh export comment"}},
+				Comments: []beads.Comment{{ID: "2", Text: "fresh export comment"}},
 			},
 			CommentsLoaded: true,
 		},
@@ -191,8 +191,8 @@ func TestCommentStatePreservedAcrossRefresh(t *testing.T) {
 				ID:    "ab-001",
 				Title: "Original Title",
 				Comments: []beads.Comment{
-					{ID: 1, Text: "comment A"},
-					{ID: 2, Text: "comment B"},
+					{ID: "1", Text: "comment A"},
+					{ID: "2", Text: "comment B"},
 				},
 			},
 			CommentsLoaded: true,

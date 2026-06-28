@@ -127,7 +127,7 @@ func TestNewAppWithMockClientLoadsIssues(t *testing.T) {
 	}
 	mock.CommentsFn = func(ctx context.Context, issueID string) ([]beads.Comment, error) {
 		return []beads.Comment{
-			{ID: 1, IssueID: issueID, Author: "tester", Text: "hello", CreatedAt: time.Now().UTC().Format(time.RFC3339)},
+			{ID: "1", IssueID: issueID, Author: "tester", Text: "hello", CreatedAt: time.Now().UTC().Format(time.RFC3339)},
 		}, nil
 	}
 
@@ -174,7 +174,7 @@ func TestAppRefreshWithMockClient(t *testing.T) {
 
 func TestRefreshSkipsBackgroundFetchForExportedComments(t *testing.T) {
 	exportedComments := []beads.Comment{
-		{ID: 1, IssueID: "ab-001", Author: "tester", Text: "from export", CreatedAt: "2024-01-01T00:00:00Z"},
+		{ID: "1", IssueID: "ab-001", Author: "tester", Text: "from export", CreatedAt: "2024-01-01T00:00:00Z"},
 	}
 	mock := beads.NewMockClient()
 	mock.ExportFn = func(ctx context.Context) ([]beads.FullIssue, error) {
@@ -191,7 +191,7 @@ func TestRefreshSkipsBackgroundFetchForExportedComments(t *testing.T) {
 	}
 	mock.CommentsFn = func(ctx context.Context, issueID string) ([]beads.Comment, error) {
 		return []beads.Comment{
-			{ID: 2, IssueID: issueID, Author: "tester", Text: "redundant fetch", CreatedAt: "2024-01-02T00:00:00Z"},
+			{ID: "2", IssueID: issueID, Author: "tester", Text: "redundant fetch", CreatedAt: "2024-01-02T00:00:00Z"},
 		}, nil
 	}
 

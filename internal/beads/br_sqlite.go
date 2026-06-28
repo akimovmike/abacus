@@ -14,6 +14,8 @@ import (
 	"strings"
 	"time"
 
+	appErrors "abacus/internal/errors"
+
 	_ "modernc.org/sqlite" // Pure Go SQLite driver, WAL-friendly
 )
 
@@ -32,10 +34,7 @@ type brSQLiteClient struct {
 // EVOLVING: Use this for new development with br backend.
 func NewBrSQLiteClient(dbPath string, opts ...BrCLIOption) Client {
 	trimmed := strings.TrimSpace(dbPath)
-	if trimmed == "" {
-		// brCLIClient only implements Writer, not Client, so we can't fall back.
-		panic("NewBrSQLiteClient requires a non-empty dbPath; use NewBrCLIClient for CLI-only Writer operations")
-	}
+	appErrors.Must(trimmed != "", "NewBrSQLiteClient requires a non-empty dbPath; use NewBrCLIClient for CLI-only Writer operations")
 	dsn := buildSQLiteDSN(trimmed)
 	// Ensure writes go to the same DB when the CLI is used for mutations.
 	opts = append(opts, WithBrDatabasePath(trimmed))

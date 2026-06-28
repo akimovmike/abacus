@@ -16,10 +16,11 @@ import (
 
 // backendTestEnv holds the test environment for backend integration tests.
 type backendTestEnv struct {
-	Backend string // "bd" or "br"
-	DBPath  string
-	WorkDir string
-	cleanup func()
+	Backend   string // "bd" or "br"
+	DBPath    string // SQLite database path; empty for Dolt stores
+	WorkDir   string
+	StoreKind StoreKind
+	cleanup   func()
 }
 
 // skipIfNoBackend skips the test if the specified backend binary is not available.
@@ -33,7 +34,7 @@ func skipIfNoBackend(t *testing.T, backend string) string {
 }
 
 // setupBackendTestDB creates a temp directory with an initialized database.
-// Returns the test environment with dbPath, workDir, and a cleanup function.
+// Returns the test environment with dbPath, workDir, store kind, and a cleanup function.
 func setupBackendTestDB(t *testing.T, backend string) backendTestEnv {
 	t.Helper()
 
@@ -45,7 +46,6 @@ func setupBackendTestDB(t *testing.T, backend string) backendTestEnv {
 		t.Fatalf("resolve temp dir symlinks: %v", err)
 	}
 	beadsDir := filepath.Join(dir, ".beads")
-	dbPath := filepath.Join(beadsDir, "beads.db")
 
 	// Initialize database with the backend
 	cmd := exec.Command(backend, "init", "--prefix", "test")
@@ -55,18 +55,35 @@ func setupBackendTestDB(t *testing.T, backend string) backendTestEnv {
 		t.Fatalf("%s init failed: %v\nOutput: %s", backend, err, out)
 	}
 
-	// Verify the db was created
-	if _, err := os.Stat(dbPath); os.IsNotExist(err) {
-		t.Fatalf("%s init did not create expected database at %s", backend, dbPath)
+	kind := detectStoreKind(beadsDir)
+	var dbPath string
+	if kind == StoreKindSQLite {
+		dbPath = filepath.Join(beadsDir, "beads.db")
+		if _, err := os.Stat(dbPath); os.IsNotExist(err) {
+			t.Fatalf("%s init did not create expected database at %s", backend, dbPath)
+		}
+	} else if kind == StoreKindDolt {
+		dbPath = ""
+	} else {
+		t.Fatalf("%s init created an unrecognized store in %s", backend, beadsDir)
 	}
 
 	return backendTestEnv{
-		Backend: backend,
-		DBPath:  dbPath,
-		WorkDir: dir,
+		Backend:   backend,
+		DBPath:    dbPath,
+		WorkDir:   dir,
+		StoreKind: kind,
 		cleanup: func() {
 			// TempDir cleanup is automatic
 		},
+	}
+}
+
+// skipIfNotSQLite skips a test when the backend initialized a non-SQLite store.
+func skipIfNotSQLite(t *testing.T, env backendTestEnv) {
+	t.Helper()
+	if env.StoreKind != StoreKindSQLite {
+		t.Skipf("skipping SQLite-specific test for %s (store kind %v)", env.Backend, env.StoreKind)
 	}
 }
 
@@ -75,10 +92,14 @@ func newClientForBackend(t *testing.T, env backendTestEnv) Client {
 	t.Helper()
 	switch env.Backend {
 	case "br":
-		// br needs WorkDir because it finds workspace by walking up from cwd
+		if env.StoreKind == StoreKindDolt {
+			return NewBrDoltClient(env.WorkDir)
+		}
 		return NewBrSQLiteClient(env.DBPath, WithBrWorkDir(env.WorkDir))
 	case "bd":
-		// bd uses --db flag directly and doesn't need WorkDir
+		if env.StoreKind == StoreKindDolt {
+			return NewBdDoltClient(env.WorkDir)
+		}
 		return NewBdSQLiteClient(env.DBPath)
 	default:
 		t.Fatalf("unknown backend: %s", env.Backend)
@@ -96,7 +117,7 @@ func extractCreatedID(output string) string {
 	lines := strings.Split(output, "\n")
 	for _, line := range lines {
 		for _, field := range strings.Fields(line) {
-			id := strings.Trim(field, ":,.;[](){}")
+			id := strings.Trim(field, ":,.;[](){}|")
 			if strings.HasPrefix(id, "test-") || strings.HasPrefix(id, "ab-") {
 				return id
 			}

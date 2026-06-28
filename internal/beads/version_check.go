@@ -10,6 +10,8 @@ import (
 )
 
 // MinBeadsVersion defines the minimum supported Beads CLI version.
+// Legacy SQLite bd (>= 0.30.0) and Dolt-backed bd (>= 0.58 / v1.0.5+) are both
+// supported; Dolt schema compatibility is gated by BackendContext.SchemaVersion.
 const MinBeadsVersion = "0.30.0"
 
 // VersionInfo captures metadata about the Beads CLI discovered during checks.

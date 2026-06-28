@@ -282,6 +282,7 @@ func TestSQLiteWithBr(t *testing.T) {
 
 	env := setupBackendTestDB(t, "br")
 	defer env.cleanup()
+	skipIfNotSQLite(t, env)
 
 	ctx := context.Background()
 
@@ -359,6 +360,7 @@ func TestSQLiteWithBd(t *testing.T) {
 
 	env := setupBackendTestDB(t, "bd")
 	defer env.cleanup()
+	skipIfNotSQLite(t, env)
 
 	ctx := context.Background()
 
@@ -416,6 +418,7 @@ func TestMixedOperations_WriteCliReadSqlite(t *testing.T) {
 
 			env := setupBackendTestDB(t, backend)
 			defer env.cleanup()
+			skipIfNotSQLite(t, env)
 
 			ctx := context.Background()
 
@@ -613,6 +616,7 @@ func TestSchemaCompatibility(t *testing.T) {
 
 	for _, env := range []backendTestEnv{brEnv, bdEnv} {
 		t.Run(env.Backend+"_schema", func(t *testing.T) {
+			skipIfNotSQLite(t, env)
 			db, err := sql.Open("sqlite", env.DBPath)
 			if err != nil {
 				t.Fatalf("Open db: %v", err)

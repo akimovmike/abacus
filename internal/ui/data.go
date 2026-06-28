@@ -178,12 +178,14 @@ func loadData(ctx context.Context, client beads.Client, reporter StartupReporter
 		return nil, fmt.Errorf("export: %w", err)
 	}
 
-	// Allow empty database - user can add first bead via 'n' key
+	// Distinguish genuinely empty from silently-broken: the reader's schema
+	// guard and count cross-check already ran. Return ErrNoIssues so callers
+	// can start the UI with empty roots instead of silently swallowing zero.
 	if len(issues) == 0 {
 		if reporter != nil {
 			reporter.Stage(StartupStageLoadingIssues, "No beads found (empty database)")
 		}
-		return nil, nil
+		return nil, ErrNoIssues
 	}
 
 	if reporter != nil {

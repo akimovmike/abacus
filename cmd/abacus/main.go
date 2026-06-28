@@ -6,6 +6,7 @@ import (
 	"flag"
 	"fmt"
 	"os"
+	"path/filepath"
 	"strings"
 	"time"
 
@@ -77,15 +78,17 @@ func main() {
 	startup := NewStartupDisplay(os.Stderr)
 	startup.Stage(ui.StartupStageInit, "Starting up...")
 
-	// DB discovery MUST happen before backend detection (ab-4p2b)
+	// Workspace discovery MUST happen before backend detection (ab-4p2b)
 	// Otherwise users outside a beads project see confusing backend prompts
-	// before being told there's no database.
-	startup.Stage(ui.StartupStageFindingDatabase, "Looking for beads database...")
-	if _, _, err := ui.FindBeadsDB(); err != nil {
+	// before being told there's no workspace.
+	startup.Stage(ui.StartupStageFindingDatabase, "Looking for beads workspace...")
+	workDir, beadsDir, err := ui.FindBeadsWorkdir()
+	if err != nil {
 		startup.Stop()
 		fmt.Fprintf(os.Stderr, "Error: %v\n", err)
 		os.Exit(1)
 	}
+	startup.Stage(ui.StartupStageFindingDatabase, fmt.Sprintf("Using workspace at %s", beadsDir))
 
 	// Backend detection (includes version check internally unless skipped)
 	// This determines which backend (bd or br) to use for this project.
@@ -109,21 +112,94 @@ func main() {
 		fmt.Fprintf(os.Stderr, "Error: %v\n", err)
 		os.Exit(1)
 	}
-
-	// Show bd version warning if using bd (one-time warning for versions > MaxSupportedBdVersion)
-	// Only show if we didn't skip version check (user wants speed, not warnings)
-	if !skipVersionCheck && detectedBackend == beads.BackendBd {
-		beads.CheckBdVersionWarning()
-	}
 	runtime.backend = detectedBackend
 
-	// Pass the existing startup display to runWithRuntime
-	if err := runWithRuntime(runtime, ui.NewApp, newInteractiveProgram, func() startupAnimator {
-		return startup
-	}); err != nil {
+	// Probe the backend context and resolve the store kind. This is the
+	// authoritative storage-truth guard (invariant #1 / #4 / #6).
+	startup.Stage(ui.StartupStageVersionCheck, "Resolving store...")
+	ctx, err := beads.ProbeContext(context.Background(), detectedBackend, workDir)
+	if err != nil {
+		startup.Stop()
 		fmt.Fprintf(os.Stderr, "Error: %v\n", err)
 		os.Exit(1)
 	}
+	if ctx.Kind == beads.StoreKindUnknown {
+		ctx.Kind = beads.StoreKindDolt
+		if info, err := os.Stat(filepath.Join(beadsDir, "beads.db")); err == nil && !info.IsDir() {
+			ctx.Kind = beads.StoreKindSQLite
+		}
+	}
+
+	if err := assertStoreTruth(ctx, beadsDir); err != nil {
+		startup.Stop()
+		fmt.Fprintf(os.Stderr, "Error: %v\n", err)
+		os.Exit(1)
+	}
+	if err := beads.ValidateSchemaVersion(ctx); err != nil {
+		startup.Stop()
+		fmt.Fprintf(os.Stderr, "Error: %v\n", err)
+		os.Exit(1)
+	}
+
+	desc, storePath := buildStoreDescriptor(ctx, workDir, beadsDir)
+	client, err := beads.NewClientForBackend(detectedBackend, desc, ctx)
+	if err != nil {
+		startup.Stop()
+		fmt.Fprintf(os.Stderr, "Error: %v\n", err)
+		os.Exit(1)
+	}
+
+	// Pass the resolved client and startup display to runWithRuntime.
+	if err := runWithRuntime(runtime, ui.NewApp, newInteractiveProgram, func() startupAnimator {
+		return startup
+	}, client, storePath); err != nil {
+		fmt.Fprintf(os.Stderr, "Error: %v\n", err)
+		os.Exit(1)
+	}
+}
+
+// assertStoreTruth enforces invariant #1/#4: the chosen reader must match the
+// store the CLI writes to. A dolt context with a legacy SQLite file is an
+// orphan/migration error; a SQLite context with a dolt directory is a mismatch.
+func assertStoreTruth(ctx beads.BackendContext, beadsDir string) error {
+	hasSQLiteDB := false
+	if info, err := os.Stat(filepath.Join(beadsDir, "beads.db")); err == nil && !info.IsDir() {
+		hasSQLiteDB = true
+	}
+	hasDoltDir := false
+	for _, name := range []string{"embeddeddolt", "dolt"} {
+		if info, err := os.Stat(filepath.Join(beadsDir, name)); err == nil && info.IsDir() {
+			hasDoltDir = true
+			break
+		}
+	}
+
+	if ctx.Backend == "dolt" && ctx.Kind != beads.StoreKindDolt {
+		return fmt.Errorf("backend reports dolt but workspace %s has no dolt store; refusing to use orphan SQLite file", beadsDir)
+	}
+	if ctx.Backend == "sqlite" && ctx.Kind != beads.StoreKindSQLite {
+		return fmt.Errorf("backend reports sqlite but workspace %s does not contain beads.db", beadsDir)
+	}
+	if ctx.Kind == beads.StoreKindDolt && hasSQLiteDB && !hasDoltDir {
+		return fmt.Errorf("workspace %s contains beads.db but no dolt store; refusing orphan SQLite file", beadsDir)
+	}
+	return nil
+}
+
+// buildStoreDescriptor converts the resolved context into the descriptor and
+// the path that refresh should watch.
+func buildStoreDescriptor(ctx beads.BackendContext, workDir, beadsDir string) (beads.StoreDescriptor, string) {
+	if ctx.Kind == beads.StoreKindDolt {
+		for _, name := range []string{"embeddeddolt", "dolt"} {
+			candidate := filepath.Join(beadsDir, name)
+			if info, err := os.Stat(candidate); err == nil && info.IsDir() {
+				return beads.StoreDescriptor{Kind: beads.StoreKindDolt, WorkDir: workDir}, candidate
+			}
+		}
+		return beads.StoreDescriptor{Kind: beads.StoreKindDolt, WorkDir: workDir}, beadsDir
+	}
+	dbPath := filepath.Join(beadsDir, "beads.db")
+	return beads.StoreDescriptor{Kind: beads.StoreKindSQLite, DBPath: dbPath}, dbPath
 }
 
 func newInteractiveProgram(app *ui.App) programRunner {
@@ -242,6 +318,8 @@ func runWithRuntime(
 	builder func(ui.Config) (*ui.App, error),
 	factory programFactory,
 	spinnerFactory func() startupAnimator,
+	client beads.Client,
+	storePath string,
 ) error {
 	var spinner startupAnimator
 	if spinnerFactory != nil {
@@ -273,6 +351,8 @@ func runWithRuntime(
 		Version:         Version,
 		UpdateChan:      updateChan,
 		Backend:         runtime.backend,
+		Client:          client,
+		StorePath:       storePath,
 	}
 	if spinner != nil {
 		cfg.StartupReporter = spinner

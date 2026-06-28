@@ -1,5 +1,7 @@
 package beads
 
+import "encoding/json"
+
 // LiteIssue represents a minimal issue record returned by `bd list`.
 type LiteIssue struct {
 	ID string `json:"id"`
@@ -7,7 +9,7 @@ type LiteIssue struct {
 
 // Comment models a Beads issue comment entry.
 type Comment struct {
-	ID        int    `json:"id"`
+	ID        string `json:"id"`
 	IssueID   string `json:"issue_id"`
 	Author    string `json:"author"`
 	Text      string `json:"text"`
@@ -18,6 +20,31 @@ type Comment struct {
 type Dependency struct {
 	TargetID string `json:"id"`
 	Type     string `json:"dependency_type"`
+}
+
+// UnmarshalJSON accepts either the "show" shape (id + dependency_type) or the
+// "list" shape emitted by Dolt backends (depends_on_id + type).
+func (d *Dependency) UnmarshalJSON(data []byte) error {
+	var show struct {
+		TargetID string `json:"id"`
+		Type     string `json:"dependency_type"`
+	}
+	if err := json.Unmarshal(data, &show); err == nil && show.TargetID != "" {
+		d.TargetID = show.TargetID
+		d.Type = show.Type
+		return nil
+	}
+
+	var list struct {
+		TargetID string `json:"depends_on_id"`
+		Type     string `json:"type"`
+	}
+	if err := json.Unmarshal(data, &list); err != nil {
+		return err
+	}
+	d.TargetID = list.TargetID
+	d.Type = list.Type
+	return nil
 }
 
 // Dependent represents a reverse dependency entry.

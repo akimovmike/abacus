@@ -23,6 +23,9 @@ const (
 	CodeInvalidIssueData   Code = "invalid_issue_data"
 	CodeGraphConstruction  Code = "graph_construction_failed"
 	CodeConfigurationError Code = "configuration_error"
+
+	// CodeInvariant signals a broken precondition that should never happen.
+	CodeInvariant Code = "invariant_violated"
 )
 
 // Error represents a structured error with a machine-readable code plus message.
@@ -65,4 +68,21 @@ func CodeOf(err error) Code {
 // IsCode reports whether the error (or its unwrap chain) matches the provided code.
 func IsCode(err error, code Code) bool {
 	return CodeOf(err) == code
+}
+
+// Require returns a CodeInvariant error when cond is false.
+// Use it for production guards that must surface loudly (toast / fatal).
+func Require(cond bool, msg string) error {
+	if cond {
+		return nil
+	}
+	return New(CodeInvariant, msg, nil)
+}
+
+// Must panics with msg when cond is false.
+// Use it for programmer-error preconditions that should never reach production.
+func Must(cond bool, msg string) {
+	if !cond {
+		panic(msg)
+	}
 }

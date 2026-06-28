@@ -115,8 +115,8 @@ func TestBuildTreeLines_RendersCommentColumn(t *testing.T) {
 			Status:    "open",
 			UpdatedAt: fixedNow.Format(time.RFC3339),
 			Comments: []beads.Comment{
-				{ID: 1, IssueID: "ab-222", Text: "first"},
-				{ID: 2, IssueID: "ab-222", Text: "second"},
+				{ID: "1", IssueID: "ab-222", Text: "first"},
+				{ID: "2", IssueID: "ab-222", Text: "second"},
 			},
 		},
 		CommentsLoaded: true,

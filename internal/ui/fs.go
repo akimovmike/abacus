@@ -8,6 +8,29 @@ import (
 	"time"
 )
 
+// FindBeadsWorkdir locates the nearest .beads directory walking up from the
+// current directory and returns the workspace root and the .beads path.
+func FindBeadsWorkdir() (string, string, error) {
+	wd, err := os.Getwd()
+	if err != nil {
+		return "", "", fmt.Errorf("get working directory: %w", err)
+	}
+	dir := wd
+	for {
+		candidate := filepath.Join(dir, ".beads")
+		info, err := os.Stat(candidate)
+		if err == nil && info.IsDir() {
+			return dir, candidate, nil
+		}
+		parent := filepath.Dir(dir)
+		if parent == dir {
+			break
+		}
+		dir = parent
+	}
+	return "", "", fmt.Errorf("no beads workspace found from %s. Run 'beads init' to create one", wd)
+}
+
 // FindBeadsDB locates the beads database file.
 // It checks in order:
 // 1. .beads/beads.db walking up from the current directory

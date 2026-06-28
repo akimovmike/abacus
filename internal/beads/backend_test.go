@@ -856,66 +856,81 @@ func TestDetectBackend_StoredPreference_VersionFails_NonTTY(t *testing.T) {
 	}
 }
 
-// TestNewClientForBackend_Bd tests creating a bd backend client.
-func TestNewClientForBackend_Bd(t *testing.T) {
-	client, err := NewClientForBackend(BackendBd, "/tmp/test.db")
+// TestNewClientForBackend_BdSQLite tests creating a bd SQLite client.
+func TestNewClientForBackend_BdSQLite(t *testing.T) {
+	client, err := NewClientForBackend(BackendBd, StoreDescriptor{Kind: StoreKindSQLite, DBPath: "/tmp/test.db"}, BackendContext{Backend: "sqlite"})
 	if err != nil {
-		t.Fatalf("NewClientForBackend(%q, path) error = %v, want nil", BackendBd, err)
+		t.Fatalf("NewClientForBackend(%q, sqlite) error = %v, want nil", BackendBd, err)
 	}
 	if client == nil {
 		t.Fatal("NewClientForBackend returned nil client")
 	}
-	// Verify it's the correct type (bdSQLiteClient)
 	if _, ok := client.(*bdSQLiteClient); !ok {
 		t.Errorf("expected *bdSQLiteClient, got %T", client)
 	}
 }
 
-// TestNewClientForBackend_Br tests creating a br backend client.
-func TestNewClientForBackend_Br(t *testing.T) {
-	client, err := NewClientForBackend(BackendBr, "/tmp/test.db")
+// TestNewClientForBackend_BrSQLite tests creating a br SQLite client.
+func TestNewClientForBackend_BrSQLite(t *testing.T) {
+	client, err := NewClientForBackend(BackendBr, StoreDescriptor{Kind: StoreKindSQLite, DBPath: "/tmp/test.db"}, BackendContext{Backend: "sqlite"})
 	if err != nil {
-		t.Fatalf("NewClientForBackend(%q, path) error = %v, want nil", BackendBr, err)
+		t.Fatalf("NewClientForBackend(%q, sqlite) error = %v, want nil", BackendBr, err)
 	}
 	if client == nil {
 		t.Fatal("NewClientForBackend returned nil client")
 	}
-	// Verify it's the correct type (brSQLiteClient)
 	if _, ok := client.(*brSQLiteClient); !ok {
 		t.Errorf("expected *brSQLiteClient, got %T", client)
 	}
 }
 
+// TestNewClientForBackend_BdDolt tests creating a bd dolt client.
+func TestNewClientForBackend_BdDolt(t *testing.T) {
+	client, err := NewClientForBackend(BackendBd, StoreDescriptor{Kind: StoreKindDolt, WorkDir: "/tmp/proj"}, BackendContext{Backend: "dolt"})
+	if err != nil {
+		t.Fatalf("NewClientForBackend(%q, dolt) error = %v, want nil", BackendBd, err)
+	}
+	if client == nil {
+		t.Fatal("NewClientForBackend returned nil client")
+	}
+	if _, ok := client.(*bdDoltClient); !ok {
+		t.Errorf("expected *bdDoltClient, got %T", client)
+	}
+}
+
+// TestNewClientForBackend_BrDolt tests creating a br dolt client.
+func TestNewClientForBackend_BrDolt(t *testing.T) {
+	client, err := NewClientForBackend(BackendBr, StoreDescriptor{Kind: StoreKindDolt, WorkDir: "/tmp/proj"}, BackendContext{Backend: "dolt"})
+	if err != nil {
+		t.Fatalf("NewClientForBackend(%q, dolt) error = %v, want nil", BackendBr, err)
+	}
+	if client == nil {
+		t.Fatal("NewClientForBackend returned nil client")
+	}
+	if _, ok := client.(*brDoltClient); !ok {
+		t.Errorf("expected *brDoltClient, got %T", client)
+	}
+}
+
 // TestNewClientForBackend_UnknownBackend tests error handling for unknown backend.
 func TestNewClientForBackend_UnknownBackend(t *testing.T) {
-	_, err := NewClientForBackend("unknown", "/tmp/test.db")
+	_, err := NewClientForBackend("unknown", StoreDescriptor{Kind: StoreKindSQLite, DBPath: "/tmp/test.db"}, BackendContext{Backend: "sqlite"})
 	if err == nil {
-		t.Error("NewClientForBackend(unknown, path) should return error")
+		t.Error("NewClientForBackend(unknown, ...) should return error")
 	}
-	if !strings.Contains(err.Error(), "unknown backend") {
-		t.Errorf("error should mention 'unknown backend', got: %v", err)
+	if !strings.Contains(err.Error(), "backend must be resolved") {
+		t.Errorf("error should mention backend resolution, got: %v", err)
 	}
 }
 
-// TestNewClientForBackend_EmptyDbPath tests error handling for empty db path.
-func TestNewClientForBackend_EmptyDbPath(t *testing.T) {
-	_, err := NewClientForBackend(BackendBd, "")
+// TestNewClientForBackend_UnknownStoreKind errors when store kind is unresolved.
+func TestNewClientForBackend_UnknownStoreKind(t *testing.T) {
+	_, err := NewClientForBackend(BackendBd, StoreDescriptor{}, BackendContext{Backend: "sqlite"})
 	if err == nil {
-		t.Error("NewClientForBackend with empty dbPath should return error")
+		t.Error("NewClientForBackend with unknown store kind should return error")
 	}
-	if !strings.Contains(err.Error(), "dbPath is required") {
-		t.Errorf("error should mention 'dbPath is required', got: %v", err)
-	}
-}
-
-// TestNewClientForBackend_EmptyBackend tests error handling for empty backend.
-func TestNewClientForBackend_EmptyBackend(t *testing.T) {
-	_, err := NewClientForBackend("", "/tmp/test.db")
-	if err == nil {
-		t.Error("NewClientForBackend with empty backend should return error")
-	}
-	if !strings.Contains(err.Error(), "unknown backend") {
-		t.Errorf("error should mention 'unknown backend', got: %v", err)
+	if !strings.Contains(err.Error(), "store kind") {
+		t.Errorf("error should mention store kind, got: %v", err)
 	}
 }
 

@@ -21,8 +21,9 @@ const maxErrorSnippetLen = 200
 // bdCLIClient implements Writer for the beads Go (bd) CLI.
 // FROZEN: Only critical bug fixes allowed. New features go to brCLIClient.
 type bdCLIClient struct {
-	bin    string
-	dbArgs []string
+	bin     string
+	dbArgs  []string
+	workDir string
 }
 
 // BdCLIOption configures the bd CLI client implementation.
@@ -42,6 +43,16 @@ func WithBdDatabasePath(path string) BdCLIOption {
 	return func(c *bdCLIClient) {
 		if trimmed := strings.TrimSpace(path); trimmed != "" {
 			c.dbArgs = []string{"--db", trimmed}
+		}
+	}
+}
+
+// WithBdWorkDir sets the working directory for bd CLI invocations.
+// bd discovers its workspace via the -C global flag.
+func WithBdWorkDir(dir string) BdCLIOption {
+	return func(c *bdCLIClient) {
+		if trimmed := strings.TrimSpace(dir); trimmed != "" {
+			c.workDir = trimmed
 		}
 	}
 }
@@ -355,7 +366,10 @@ func (c *bdCLIClient) AddComment(ctx context.Context, issueID, text string) erro
 }
 
 func (c *bdCLIClient) run(ctx context.Context, args ...string) ([]byte, error) {
-	finalArgs := make([]string, 0, len(c.dbArgs)+len(args))
+	finalArgs := make([]string, 0, len(c.dbArgs)+len(args)+2)
+	if c.workDir != "" {
+		finalArgs = append(finalArgs, "-C", c.workDir)
+	}
 	finalArgs = append(finalArgs, c.dbArgs...)
 	finalArgs = append(finalArgs, args...)
 	//nolint:gosec // G204: CLI wrapper intentionally shells out to bd command
@@ -385,15 +399,23 @@ func formatCommandError(bin string, args []string, cmdErr error, out []byte) err
 // The scanner is string-aware: braces inside JSON string values are not counted.
 // It handles escape sequences like \" and \\ correctly.
 func extractJSON(out []byte) []byte {
-	// Try each '{' as a potential JSON start
+	return extractJSONDelimited(out, '{', '}')
+}
+
+// extractJSONArray finds and returns the first valid JSON array in the output.
+// It mirrors extractJSON but matches square brackets.
+func extractJSONArray(out []byte) []byte {
+	return extractJSONDelimited(out, '[', ']')
+}
+
+func extractJSONDelimited(out []byte, open, close byte) []byte {
 	for start := 0; start < len(out); start++ {
-		idx := bytes.IndexByte(out[start:], '{')
+		idx := bytes.IndexByte(out[start:], open)
 		if idx == -1 {
 			return nil
 		}
 		start += idx
 
-		// Scan for matching closing brace, tracking string state
 		depth := 0
 		inString := false
 	scanLoop:
@@ -402,7 +424,6 @@ func extractJSON(out []byte) []byte {
 
 			if inString {
 				if b == '\\' && i+1 < len(out) {
-					// Skip escaped character
 					i++
 					continue
 				}
@@ -412,20 +433,18 @@ func extractJSON(out []byte) []byte {
 				continue
 			}
 
-			// Not in string
 			switch b {
 			case '"':
 				inString = true
-			case '{':
+			case open:
 				depth++
-			case '}':
+			case close:
 				depth--
 				if depth == 0 {
 					candidate := out[start : i+1]
 					if json.Valid(candidate) {
 						return candidate
 					}
-					// Invalid JSON, try next '{'
 					break scanLoop
 				}
 			}
