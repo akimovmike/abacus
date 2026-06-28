@@ -56,33 +56,35 @@ const (
 // ViewMode represents the current view filter mode.
 type ViewMode int
 
+// View modes in cycle order (broad -> narrow). Names and predicates live in
+// viewModeDefs (state_filter.go), keyed by these consts so they can't drift.
 const (
-	ViewModeAll    ViewMode = iota // Show all issues (default)
-	ViewModeActive                 // Show non-closed issues (open + in_progress)
-	ViewModeReady                  // Show ready issues (open + not blocked)
-	viewModeCount                  // internal: number of modes for cycling
+	ViewModeAll       ViewMode = iota // Show all issues (default)
+	ViewModeNotClosed                 // Hide only closed issues
+	ViewModeActive                    // Hide closed, blocked, and deferred
+	ViewModeReady                     // Show ready issues (open + not blocked)
+	viewModeCount                     // sentinel: keep last; must equal len(viewModeDefs)
 )
+
+// valid reports whether v indexes a defined mode in viewModeDefs.
+func (v ViewMode) valid() bool { return int(v) >= 0 && int(v) < len(viewModeDefs) }
 
 // String returns the display name of the view mode.
 func (v ViewMode) String() string {
-	switch v {
-	case ViewModeActive:
-		return "Active"
-	case ViewModeReady:
-		return "Ready"
-	default:
-		return "All"
+	if !v.valid() {
+		return viewModeDefs[ViewModeAll].name // guard: unknown mode reads as All
 	}
+	return viewModeDefs[v].name
 }
 
 // Next returns the next view mode in the cycle.
 func (v ViewMode) Next() ViewMode {
-	return ViewMode((int(v) + 1) % int(viewModeCount))
+	return ViewMode((int(v) + 1) % len(viewModeDefs))
 }
 
 // Prev returns the previous view mode in the cycle.
 func (v ViewMode) Prev() ViewMode {
-	return ViewMode((int(v) + int(viewModeCount) - 1) % int(viewModeCount))
+	return ViewMode((int(v) + len(viewModeDefs) - 1) % len(viewModeDefs))
 }
 
 // Config configures the UI application.
@@ -126,7 +128,7 @@ type App struct {
 	textInput  textinput.Model
 	searching  bool
 	filterText string
-	viewMode   ViewMode // Current view filter mode (All, Active, Ready)
+	viewMode   ViewMode // Current view filter mode (see viewModeDefs)
 	// filterCollapsed tracks nodes explicitly collapsed while a search filter is active.
 	filterCollapsed map[string]bool
 	// filterForcedExpanded tracks nodes temporarily expanded to surface filter matches.

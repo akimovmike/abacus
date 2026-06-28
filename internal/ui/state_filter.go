@@ -26,40 +26,42 @@ func nodeMatchesFilter(filterLower string, node *graph.Node) bool {
 	return strings.Contains(trimmed, filterLower)
 }
 
+// viewModeDef is one entry in the view-mode table: a display name and a
+// predicate reporting whether an issue is shown (true = keep).
+type viewModeDef struct {
+	name string
+	keep func(status string, isBlocked bool) bool
+}
+
+// viewModeDefs is the single source of truth for view modes. It is keyed by
+// the ViewMode consts (app.go) so each name+predicate is bound to its enum
+// value and cannot drift. len(viewModeDefs) drives the Next/Prev cycle.
+//
+// The status checks are plain string comparisons against domain status values;
+// "Ready" (open && !blocked) is exactly domain.Issue.IsReady(), so this needs
+// no domain.NewIssueFromFull conversion. Unknown statuses (e.g. "reviewing")
+// fall through every "not X" check and stay visible except in Ready.
+var viewModeDefs = [...]viewModeDef{
+	ViewModeAll: {"All", func(string, bool) bool { return true }},
+	ViewModeNotClosed: {"Not Closed", func(s string, _ bool) bool {
+		return s != string(domain.StatusClosed)
+	}},
+	ViewModeActive: {"Active", func(s string, _ bool) bool {
+		return s != string(domain.StatusClosed) &&
+			s != string(domain.StatusBlocked) &&
+			s != string(domain.StatusDeferred)
+	}},
+	ViewModeReady: {"Ready", func(s string, isBlocked bool) bool {
+		return s == string(domain.StatusOpen) && !isBlocked
+	}},
+}
+
 // nodeMatchesViewMode checks if a node matches the current view mode filter.
 func nodeMatchesViewMode(mode ViewMode, node *graph.Node) bool {
-	if mode == ViewModeAll {
-		return true
+	if !mode.valid() || viewModeDefs[mode].keep == nil {
+		return true // guard: an unknown/incomplete mode never hides on a bug
 	}
-
-	// Try to convert to domain issue for proper status checking
-	domainIssue, err := domain.NewIssueFromFull(node.Issue, node.IsBlocked)
-	if err != nil {
-		// Fallback to direct string comparison
-		switch mode {
-		case ViewModeActive:
-			// Active excludes closed, blocked, and deferred
-			s := node.Issue.Status
-			return s != "closed" && s != "blocked" && s != "deferred"
-		case ViewModeReady:
-			// Ready = open status + not blocked by dependencies
-			return node.Issue.Status == "open" && !node.IsBlocked
-		default:
-			return true
-		}
-	}
-
-	switch mode {
-	case ViewModeActive:
-		// Active excludes closed, blocked, and deferred
-		s := domainIssue.Status()
-		return s != domain.StatusClosed && s != domain.StatusBlocked && s != domain.StatusDeferred
-	case ViewModeReady:
-		// Ready = open status + not blocked by dependencies
-		return domainIssue.IsReady()
-	default:
-		return true
-	}
+	return viewModeDefs[mode].keep(node.Issue.Status, node.IsBlocked)
 }
 
 func (m *App) computeFilterEval(filterLower string) map[string]filterEvaluation {

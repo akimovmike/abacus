@@ -13,8 +13,13 @@ import (
 )
 
 func TestViewModeCycling(t *testing.T) {
+	// Cycle order: All -> Not Closed -> Active -> Ready -> (wrap) All
 	t.Run("NextCyclesForward", func(t *testing.T) {
 		mode := ViewModeAll
+		mode = mode.Next()
+		if mode != ViewModeNotClosed {
+			t.Errorf("expected ViewModeNotClosed after Next(), got %v", mode)
+		}
 		mode = mode.Next()
 		if mode != ViewModeActive {
 			t.Errorf("expected ViewModeActive after Next(), got %v", mode)
@@ -40,22 +45,72 @@ func TestViewModeCycling(t *testing.T) {
 			t.Errorf("expected ViewModeActive after Prev(), got %v", mode)
 		}
 		mode = mode.Prev()
+		if mode != ViewModeNotClosed {
+			t.Errorf("expected ViewModeNotClosed after Prev(), got %v", mode)
+		}
+		mode = mode.Prev()
 		if mode != ViewModeAll {
 			t.Errorf("expected ViewModeAll after wrapping, got %v", mode)
 		}
 	})
 
 	t.Run("String", func(t *testing.T) {
-		if ViewModeAll.String() != "All" {
-			t.Errorf("expected 'All', got %s", ViewModeAll.String())
+		cases := map[ViewMode]string{
+			ViewModeAll:       "All",
+			ViewModeNotClosed: "Not Closed",
+			ViewModeActive:    "Active",
+			ViewModeReady:     "Ready",
 		}
-		if ViewModeActive.String() != "Active" {
-			t.Errorf("expected 'Active', got %s", ViewModeActive.String())
-		}
-		if ViewModeReady.String() != "Ready" {
-			t.Errorf("expected 'Ready', got %s", ViewModeReady.String())
+		for mode, want := range cases {
+			if got := mode.String(); got != want {
+				t.Errorf("ViewMode(%d).String() = %q, want %q", int(mode), got, want)
+			}
 		}
 	})
+}
+
+// TestViewModeExhaustive is a guard: every mode in the table must have a
+// display name and a predicate. Catches a forgotten viewModeDefs entry.
+func TestViewModeExhaustive(t *testing.T) {
+	// Every mode const must have a table entry (catches a const added past the
+	// sentinel without a viewModeDefs row).
+	if len(viewModeDefs) != int(viewModeCount) {
+		t.Fatalf("viewModeDefs has %d entries but viewModeCount=%d; every mode needs a table entry",
+			len(viewModeDefs), int(viewModeCount))
+	}
+	for i := range viewModeDefs {
+		def := viewModeDefs[i]
+		if def.name == "" {
+			t.Errorf("viewModeDefs[%d] has empty name", i)
+		}
+		if def.keep == nil {
+			t.Errorf("viewModeDefs[%d] (%q) has nil keep predicate", i, def.name)
+		}
+	}
+}
+
+// TestViewModeNotClosed verifies "Not Closed" hides only closed issues and
+// keeps everything else (open, in_progress, blocked, deferred, unknown).
+func TestViewModeNotClosed(t *testing.T) {
+	roots := []*graph.Node{
+		{Issue: beads.FullIssue{ID: "ab-open", Status: "open"}},
+		{Issue: beads.FullIssue{ID: "ab-wip", Status: "in_progress"}},
+		{Issue: beads.FullIssue{ID: "ab-blocked", Status: "blocked"}, IsBlocked: true},
+		{Issue: beads.FullIssue{ID: "ab-deferred", Status: "deferred"}},
+		{Issue: beads.FullIssue{ID: "ab-unknown", Status: "reviewing"}},
+		{Issue: beads.FullIssue{ID: "ab-closed", Status: "closed"}},
+	}
+	app := &App{roots: roots, viewMode: ViewModeNotClosed, keys: DefaultKeyMap()}
+	app.recalcVisibleRows()
+
+	if len(app.visibleRows) != 5 {
+		t.Errorf("ViewModeNotClosed: expected 5 visible rows (all but closed), got %d", len(app.visibleRows))
+	}
+	for _, row := range app.visibleRows {
+		if row.Node.Issue.Status == "closed" {
+			t.Error("ViewModeNotClosed should hide closed issues")
+		}
+	}
 }
 
 func TestViewModeActiveHidesClosedIssues(t *testing.T) {
@@ -232,16 +287,16 @@ func TestViewModeKeyHandler(t *testing.T) {
 		roots:    []*graph.Node{},
 	}
 
-	// Press 'v' to cycle forward
+	// Press 'v' to cycle forward (All -> Not Closed)
 	msg := tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{'v'}}
 	result, _ := app.Update(msg)
 	app = result.(*App)
 
-	if app.viewMode != ViewModeActive {
-		t.Errorf("expected ViewModeActive after pressing 'v', got %v", app.viewMode)
+	if app.viewMode != ViewModeNotClosed {
+		t.Errorf("expected ViewModeNotClosed after pressing 'v', got %v", app.viewMode)
 	}
 
-	// Press 'V' (shift+v) to cycle backward
+	// Press 'V' (shift+v) to cycle backward (Not Closed -> All)
 	msg = tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{'V'}}
 	result, _ = app.Update(msg)
 	app = result.(*App)
