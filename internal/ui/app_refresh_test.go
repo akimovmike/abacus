@@ -316,6 +316,43 @@ func TestCheckDBForChangesIgnoresShmModification(t *testing.T) {
 	}
 }
 
+// TestCheckDBForChangesDetectsNestedDoltWrite proves the dolt regression fix:
+// a Dolt store is a directory and an external write (create/close/file) lands
+// in a nested noms chunk whose change does NOT bump the store dir's own mtime.
+// The watcher must walk the dir, or external changes never auto-refresh.
+func TestCheckDBForChangesDetectsNestedDoltWrite(t *testing.T) {
+	storeDir := t.TempDir()
+	nested := filepath.Join(storeDir, "db", ".dolt", "noms")
+	if err := os.MkdirAll(nested, 0o755); err != nil {
+		t.Fatalf("mkdir: %v", err)
+	}
+	chunk := filepath.Join(nested, "chunk")
+	if err := os.WriteFile(chunk, []byte("v1"), 0o644); err != nil {
+		t.Fatalf("write chunk: %v", err)
+	}
+	seed, err := latestModTimeForDB(storeDir)
+	if err != nil {
+		t.Fatalf("seed mod time: %v", err)
+	}
+	app := &App{
+		client:        beads.NewMockClient(),
+		dbPath:        storeDir,
+		lastDBModTime: seed,
+	}
+
+	if cmd := app.checkDBForChanges(); cmd != nil {
+		t.Fatalf("expected no refresh when store unchanged")
+	}
+	time.Sleep(10 * time.Millisecond)
+	// Mutate only the nested chunk; the store dir's own mtime stays put.
+	if err := os.WriteFile(chunk, []byte("v2-larger"), 0o644); err != nil {
+		t.Fatalf("rewrite chunk: %v", err)
+	}
+	if cmd := app.checkDBForChanges(); cmd == nil {
+		t.Fatalf("expected refresh after nested dolt write")
+	}
+}
+
 func TestRefreshHandlesClientError(t *testing.T) {
 	fixtureInitial := loadFixtureIssues(t, "issues_basic.json")
 	mock := beads.NewMockClient()

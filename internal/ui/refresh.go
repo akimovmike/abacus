@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"io/fs"
 	"os"
+	"path/filepath"
 	"strings"
 	"sync"
 	"time"
@@ -92,6 +93,15 @@ func latestModTimeForDB(dbPath string) (time.Time, error) {
 	if err != nil {
 		return time.Time{}, err
 	}
+	// A Dolt store is a directory: an external write (create/close/file) lands
+	// in a nested noms chunk whose change does NOT bump the store dir's own
+	// mtime, so we must walk for the newest entry. Bounded by store size
+	// (~17 files / ~10ms for an embedded-dolt repo).
+	// ponytail: if a store ever grows huge, watch the noms manifest instead.
+	if info.IsDir() {
+		return latestModTimeInDir(dbPath, info.ModTime())
+	}
+	// SQLite: the .db file plus its -wal sibling.
 	latest := info.ModTime()
 	for _, path := range []string{dbPath + "-wal"} {
 		if modTime, err := optionalModTime(path); err != nil {
@@ -101,6 +111,23 @@ func latestModTimeForDB(dbPath string) (time.Time, error) {
 		}
 	}
 	return latest, nil
+}
+
+func latestModTimeInDir(dir string, latest time.Time) (time.Time, error) {
+	walkErr := filepath.WalkDir(dir, func(_ string, d fs.DirEntry, err error) error {
+		if err != nil {
+			return nil // skip unreadable entries; a partial signal still works
+		}
+		fi, err := d.Info()
+		if err != nil {
+			return nil
+		}
+		if fi.ModTime().After(latest) {
+			latest = fi.ModTime()
+		}
+		return nil
+	})
+	return latest, walkErr
 }
 
 func optionalModTime(path string) (time.Time, error) {
