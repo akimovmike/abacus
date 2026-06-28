@@ -55,3 +55,6 @@ specs/
 
 # Local plans (not shared)
 docs/plans/
+
+# Caliber local state
+.caliber/
