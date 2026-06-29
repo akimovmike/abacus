@@ -70,7 +70,9 @@ func collectCommentNodes(roots []*graph.Node, priorityIDs []string) []*graph.Nod
 				if n == nil {
 					continue
 				}
-				if n.Issue.ID == id && needsCommentFetch(n) {
+				// Priority (focused) nodes retry even after an error, so viewing
+				// an issue whose comments failed re-attempts the fetch.
+				if n.Issue.ID == id && !n.CommentsLoaded {
 					return n
 				}
 				if found := find(n.Children); found != nil {
@@ -91,7 +93,10 @@ func collectCommentNodes(roots []*graph.Node, priorityIDs []string) []*graph.Nod
 }
 
 func needsCommentFetch(node *graph.Node) bool {
-	return node != nil && !node.CommentsLoaded
+	// A node with a recorded CommentError is excluded from the automatic bulk
+	// sweep so transient failures are not re-hammered on every refresh. The
+	// focused node is still retried on demand via the priority path above.
+	return node != nil && !node.CommentsLoaded && node.CommentError == ""
 }
 
 func markExportedCommentsLoaded(roots []*graph.Node) {

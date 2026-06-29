@@ -379,7 +379,7 @@ func TestRefreshHandlesClientError(t *testing.T) {
 	}
 }
 
-func TestErrorToastShowsOnFirstError(t *testing.T) {
+func TestRefreshErrorToastOnlyAfterPersistentFailures(t *testing.T) {
 	fixtureInitial := loadFixtureIssues(t, "issues_basic.json")
 	mock := beads.NewMockClient()
 	var exportCalls int
@@ -394,19 +394,30 @@ func TestErrorToastShowsOnFirstError(t *testing.T) {
 
 	app := mustNewTestApp(t, mock)
 
-	// Trigger refresh error
-	cmd := app.forceRefresh()
-	refreshMsg := extractRefreshMsg(t, cmd)
-	_, nextCmd := app.Update(refreshMsg)
+	// Auto-refresh is best-effort: a single transient bd failure must stay
+	// silent (the previous data is still on screen). The toast appears only
+	// once failures persist (refreshFailToastThreshold consecutive).
+	triggerRefreshError := func() tea.Cmd {
+		cmd := app.forceRefresh()
+		refreshMsg := extractRefreshMsg(t, cmd)
+		_, nextCmd := app.Update(refreshMsg)
+		return nextCmd
+	}
 
-	// Toast should be shown on first error
+	triggerRefreshError()
+	if app.showErrorToast {
+		t.Fatal("a single transient refresh failure must not show a toast")
+	}
+
+	var lastCmd tea.Cmd
+	for app.refreshFailCount < refreshFailToastThreshold {
+		lastCmd = triggerRefreshError()
+	}
+
 	if !app.showErrorToast {
-		t.Error("expected showErrorToast to be true on first error")
+		t.Errorf("expected toast after %d consecutive failures", refreshFailToastThreshold)
 	}
-	if !app.errorShownOnce {
-		t.Error("expected errorShownOnce to be true")
-	}
-	if nextCmd == nil {
+	if lastCmd == nil {
 		t.Error("expected tick command to be returned for toast countdown")
 	}
 }

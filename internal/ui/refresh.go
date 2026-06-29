@@ -19,6 +19,19 @@ import (
 
 const refreshTimeout = 10 * time.Second
 
+// refreshFailToastThreshold is how many consecutive auto-refresh failures must
+// occur before surfacing an error toast. Auto-refresh is best-effort and old
+// data stays valid, so a single transient bd failure should stay silent.
+const refreshFailToastThreshold = 3
+
+// commentFetchTimeout bounds a single background `bd show` comment fetch. It is
+// applied per call (not once for the whole batch) so a large or slow load never
+// exceeds a shared deadline that would mass-kill every still-pending fetch. The
+// budget is generous because a fetch may queue behind a concurrent external bd
+// writer holding the embedded Dolt lock; waiting it out beats failing, since the
+// load is background and non-blocking.
+const commentFetchTimeout = 30 * time.Second
+
 func refreshDataCmd(client beads.Client, targetModTime time.Time) tea.Cmd {
 	return func() tea.Msg {
 		ctx, cancel := context.WithTimeout(context.Background(), refreshTimeout)
@@ -245,9 +258,6 @@ func (m *App) loadCommentsInBackground() tea.Cmd {
 	}
 
 	return func() tea.Msg {
-		ctx, cancel := context.WithTimeout(context.Background(), 60*time.Second)
-		defer cancel()
-
 		type result struct {
 			id       string
 			comments []beads.Comment
@@ -265,7 +275,12 @@ func (m *App) loadCommentsInBackground() tea.Cmd {
 			go func() {
 				defer wg.Done()
 				for node := range jobs {
+					// Per-call timeout: a single shared batch deadline would
+					// guillotine every still-pending bd show at once once a
+					// large load runs long. Each fetch gets its own budget.
+					ctx, cancel := context.WithTimeout(context.Background(), commentFetchTimeout)
 					comments, err := client.Comments(ctx, node.Issue.ID)
+					cancel()
 					if err == nil && comments == nil {
 						comments = []beads.Comment{}
 					}

@@ -3,6 +3,8 @@ package ui
 import (
 	"time"
 
+	"abacus/internal/debug"
+
 	"github.com/charmbracelet/bubbles/spinner"
 	tea "github.com/charmbracelet/bubbletea"
 )
@@ -61,6 +63,13 @@ func (m *App) handleBackgroundMsg(msg tea.Msg) (tea.Model, tea.Cmd, bool) {
 		return m, tea.Batch(cmds...), true
 
 	case startBackgroundCommentLoadMsg:
+		// Skip if a load is already running: overlapping loads pile up under
+		// frequent refreshes and exhaust the per-load timeout, mass-killing
+		// in-flight bd show processes.
+		if m.commentLoadInFlight {
+			return m, nil, true
+		}
+		m.commentLoadInFlight = true
 		return m, m.loadCommentsInBackground(), true
 
 	case commentLoadedMsg:
@@ -70,6 +79,7 @@ func (m *App) handleBackgroundMsg(msg tea.Msg) (tea.Model, tea.Cmd, bool) {
 		return m, nil, true
 
 	case commentBatchLoadedMsg:
+		m.commentLoadInFlight = false
 		refreshedDetail := false
 		for _, res := range msg.results {
 			refreshedDetail = m.applyLoadedComment(res) || refreshedDetail
@@ -82,10 +92,15 @@ func (m *App) handleBackgroundMsg(msg tea.Msg) (tea.Model, tea.Cmd, bool) {
 	case refreshCompleteMsg:
 		m.refreshInFlight = false
 		if msg.err != nil {
+			m.refreshFailCount++
+			debug.Logf("refresh failed (#%d, dbPath=%q): %v", m.refreshFailCount, m.dbPath, msg.err)
 			m.lastError = msg.err.Error()
 			m.lastErrorSource = errorSourceRefresh
 			m.lastRefreshStats = ""
-			if !m.errorShownOnce {
+			// Auto-refresh is best-effort and the previous data is still on
+			// screen, so a single transient bd failure stays silent. Surface a
+			// toast only once failures persist.
+			if m.refreshFailCount >= refreshFailToastThreshold && !m.showErrorToast {
 				m.showErrorToast = true
 				m.errorToastStart = time.Now()
 				m.errorShownOnce = true
@@ -98,6 +113,7 @@ func (m *App) handleBackgroundMsg(msg tea.Msg) (tea.Model, tea.Cmd, bool) {
 			m.lastErrorSource = errorSourceNone
 			m.showErrorToast = false
 		}
+		m.refreshFailCount = 0
 		m.errorShownOnce = false
 		m.applyRefresh(msg.roots, msg.digest, msg.dbModTime)
 		if modTime, err := m.latestDBModTime(); err == nil && !modTime.IsZero() {

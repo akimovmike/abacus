@@ -7,6 +7,7 @@ import (
 	"os/exec"
 	"strings"
 
+	"abacus/internal/debug"
 	appErrors "abacus/internal/errors"
 )
 
@@ -147,6 +148,9 @@ func (c *bdDoltClient) run(ctx context.Context, args ...string) ([]byte, error) 
 	}
 	out, err := cmd.CombinedOutput()
 	if err != nil {
+		// ctx.Err() distinguishes a cancelled/timed-out run (process killed,
+		// empty/partial output) from a genuine bd failure.
+		debug.Logf("bd run failed: args=%v ctxErr=%v: %v", finalArgs, ctx.Err(), err)
 		return nil, formatCommandError(c.bin, finalArgs, err, out)
 	}
 	return out, nil

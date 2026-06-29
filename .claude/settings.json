@@ -77,7 +77,7 @@
         "hooks": [
           {
             "type": "command",
-            "command": "/opt/homebrew/bin/caliber learn finalize --auto",
+            "command": "( nohup /opt/homebrew/bin/caliber learn finalize --auto --force >> .caliber/learning/finalize.log 2>&1 & )",
             "description": "Caliber: finalizing session learnings"
           }
         ]

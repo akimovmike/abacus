@@ -148,6 +148,13 @@ type App struct {
 	lastDBModTime    time.Time
 	lastRefreshStats string
 	refreshInFlight  bool
+	// commentLoadInFlight guards against overlapping background comment loads,
+	// which otherwise pile up under frequent refreshes and exhaust the per-load
+	// timeout, mass-killing in-flight bd show processes.
+	commentLoadInFlight bool
+	// refreshFailCount tracks consecutive auto-refresh failures so a single
+	// transient bd hiccup does not flash an error toast (old data stays valid).
+	refreshFailCount int
 	lastRefreshTime  time.Time
 	spinner          spinner.Model
 	outputFormat     string
