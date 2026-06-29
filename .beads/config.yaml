@@ -55,3 +55,5 @@
 # - github.repo
 # - sync.branch - Git branch for beads commits (use BEADS_SYNC_BRANCH env var or bd config set)
 sync-branch: beads-sync
+
+sync.remote: "git+https://github.com/akimovmike/abacus.git"

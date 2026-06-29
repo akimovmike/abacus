@@ -1,86 +1,95 @@
 {
   "hooks": {
-    "PreToolUse": [
-      {
-        "matcher": "Bash",
-        "hooks": [
-          {
-            "type": "command",
-            "command": "$CLAUDE_PROJECT_DIR/.claude/hooks/trauma_guard.py"
-          }
-        ]
-      }
-    ],
-    "Stop": [
-      {
-        "matcher": "",
-        "hooks": [
-          {
-            "type": "command",
-            "command": ".claude/hooks/caliber-check-sync.sh",
-            "description": "Caliber: offer setup if not configured"
-          }
-        ]
-      }
-    ],
-    "SessionStart": [
-      {
-        "matcher": "",
-        "hooks": [
-          {
-            "type": "command",
-            "command": ".claude/hooks/caliber-session-freshness.sh",
-            "description": "Caliber: check config freshness on session start"
-          }
-        ]
-      }
-    ],
     "PostToolUse": [
       {
-        "matcher": "",
         "hooks": [
           {
-            "type": "command",
             "command": "/opt/homebrew/bin/caliber learn observe",
-            "description": "Caliber: recording tool usage for session learning"
+            "description": "Caliber: recording tool usage for session learning",
+            "type": "command"
           }
-        ]
+        ],
+        "matcher": ""
       }
     ],
     "PostToolUseFailure": [
       {
-        "matcher": "",
         "hooks": [
           {
-            "type": "command",
             "command": "/opt/homebrew/bin/caliber learn observe --failure",
-            "description": "Caliber: recording tool failure for session learning"
+            "description": "Caliber: recording tool failure for session learning",
+            "type": "command"
           }
-        ]
+        ],
+        "matcher": ""
       }
     ],
-    "UserPromptSubmit": [
+    "PreToolUse": [
       {
-        "matcher": "",
         "hooks": [
           {
-            "type": "command",
-            "command": "/opt/homebrew/bin/caliber learn observe --prompt",
-            "description": "Caliber: recording user prompt for correction detection"
+            "command": "$CLAUDE_PROJECT_DIR/.claude/hooks/trauma_guard.py",
+            "type": "command"
           }
-        ]
+        ],
+        "matcher": "Bash"
       }
     ],
     "SessionEnd": [
       {
-        "matcher": "",
         "hooks": [
           {
-            "type": "command",
-            "command": "( nohup /opt/homebrew/bin/caliber learn finalize --auto --force >> .caliber/learning/finalize.log 2>&1 & )",
-            "description": "Caliber: finalizing session learnings"
+            "command": "( nohup /opt/homebrew/bin/caliber learn finalize --auto --force \u003e\u003e .caliber/learning/finalize.log 2\u003e\u00261 \u0026 )",
+            "description": "Caliber: finalizing session learnings",
+            "type": "command"
           }
-        ]
+        ],
+        "matcher": ""
+      }
+    ],
+    "SessionStart": [
+      {
+        "hooks": [
+          {
+            "command": ".claude/hooks/caliber-session-freshness.sh",
+            "description": "Caliber: check config freshness on session start",
+            "type": "command"
+          }
+        ],
+        "matcher": ""
+      },
+      {
+        "hooks": [
+          {
+            "command": "bd prime --hook-json",
+            "type": "command"
+          }
+        ],
+        "matcher": ""
+      }
+    ],
+    "Stop": [
+      {
+        "hooks": [
+          {
+            "command": ".claude/hooks/caliber-check-sync.sh",
+            "description": "Caliber: offer setup if not configured",
+            "type": "command"
+          }
+        ],
+        "matcher": ""
+      }
+    ],
+    "UserPromptSubmit": [
+      {
+        "hooks": [
+          {
+            "command": "/opt/homebrew/bin/caliber learn observe --prompt",
+            "description": "Caliber: recording user prompt for correction detection",
+            "type": "command"
+          }
+        ],
+        "matcher": ""
       }
     ]
   },
