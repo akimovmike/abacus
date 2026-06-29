@@ -4,8 +4,31 @@ import (
 	"strings"
 	"testing"
 
+	"abacus/internal/config"
+	"abacus/internal/ui/theme"
+
 	tea "github.com/charmbracelet/bubbletea"
+	"github.com/charmbracelet/lipgloss"
 )
+
+func TestLabelChipColor(t *testing.T) {
+	t.Cleanup(func() { _ = config.Set(config.KeyTreeLabelColors, map[string]string{}) })
+
+	if got := labelChipColor("no-override"); got != theme.Current().Info() {
+		t.Fatalf("expected default theme Info() for unset label, got %v", got)
+	}
+
+	if err := config.Set(config.KeyTreeLabelColors, map[string]string{"bug": "#ff0000"}); err != nil {
+		t.Fatalf("Set: %v", err)
+	}
+	if got := labelChipColor("bug"); got != lipgloss.Color("#ff0000") {
+		t.Fatalf("expected custom color #ff0000 for bug, got %v", got)
+	}
+	// Lookup is case-insensitive (viper lowercases stored keys).
+	if got := labelChipColor("BUG"); got != lipgloss.Color("#ff0000") {
+		t.Fatalf("expected case-insensitive match for BUG, got %v", got)
+	}
+}
 
 func TestNewChipList(t *testing.T) {
 	t.Run("DefaultValues", func(t *testing.T) {

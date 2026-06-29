@@ -1,12 +1,16 @@
 package ui
 
 import (
+	"regexp"
+	"strconv"
 	"strings"
 	"testing"
 
 	"abacus/internal/beads"
 	"abacus/internal/config"
 	"abacus/internal/graph"
+
+	"github.com/charmbracelet/lipgloss"
 )
 
 func makeTestNodeWithComments(count int) *graph.Node {
@@ -15,24 +19,102 @@ func makeTestNodeWithComments(count int) *graph.Node {
 	return node
 }
 
+var labelChipPlusRe = regexp.MustCompile(`\+(\d+)`)
+
+// TestRenderLabelChips verifies the all-labels column renderer: it shows labels
+// as chips within a fixed width and collapses the overflow into a "+N" marker.
+func TestRenderLabelChips(t *testing.T) {
+	t.Run("empty labels render nothing", func(t *testing.T) {
+		if got := renderLabelChips(nil, 24); got != "" {
+			t.Fatalf("expected empty string for no labels, got %q", got)
+		}
+		if got := renderLabelChips([]string{}, 24); got != "" {
+			t.Fatalf("expected empty string for empty labels, got %q", got)
+		}
+	})
+
+	t.Run("all labels fit", func(t *testing.T) {
+		labels := []string{"bug", "ui"}
+		got := renderLabelChips(labels, 40)
+		plain := stripANSI(got)
+		for _, l := range labels {
+			if !strings.Contains(plain, l) {
+				t.Fatalf("expected %q in output, got %q", l, plain)
+			}
+		}
+		if strings.ContainsRune(plain, '+') {
+			t.Fatalf("did not expect overflow marker when all labels fit, got %q", plain)
+		}
+		if w := lipgloss.Width(got); w > 40 {
+			t.Fatalf("rendered width %d exceeds max 40", w)
+		}
+	})
+
+	t.Run("overflow collapses to +N within width", func(t *testing.T) {
+		labels := []string{"alpha", "bravo", "charlie", "delta", "echo"}
+		const maxWidth = 14
+		got := renderLabelChips(labels, maxWidth)
+		if w := lipgloss.Width(got); w > maxWidth {
+			t.Fatalf("rendered width %d exceeds max %d (output=%q)", w, maxWidth, stripANSI(got))
+		}
+		plain := stripANSI(got)
+		match := labelChipPlusRe.FindStringSubmatch(plain)
+		if match == nil {
+			t.Fatalf("expected +N overflow marker in %q", plain)
+		}
+		hidden, _ := strconv.Atoi(match[1])
+		shown := 0
+		for _, l := range labels {
+			if strings.Contains(plain, l) {
+				shown++
+			}
+		}
+		if shown+hidden != len(labels) {
+			t.Fatalf("shown(%d)+hidden(%d) != total(%d); output=%q", shown, hidden, len(labels), plain)
+		}
+		if shown == 0 {
+			t.Fatalf("expected at least one chip shown, got %q", plain)
+		}
+	})
+}
+
+func TestRenderLabelsColumn(t *testing.T) {
+	render := renderLabelsColumn(24)
+	if got := render(nil); got != "" {
+		t.Fatalf("nil node should render empty, got %q", got)
+	}
+	if got := render(&graph.Node{}); got != "" {
+		t.Fatalf("node with no labels should render empty, got %q", got)
+	}
+	node := &graph.Node{}
+	node.Issue.Labels = []string{"bug"}
+	if got := stripANSI(render(node)); !strings.Contains(got, "bug") {
+		t.Fatalf("expected label 'bug' in column output, got %q", got)
+	}
+}
+
 func TestPrepareColumnState_ResponsiveHiding(t *testing.T) {
 	// Save original config and restore after test
 	origShowColumns := config.GetBool(config.KeyTreeShowColumns)
 	origLastUpdated := config.GetBool(config.KeyTreeColumnsLastUpdated)
 	origAssignee := config.GetBool(config.KeyTreeColumnsAssignee)
 	origComments := config.GetBool(config.KeyTreeColumnsComments)
+	origLabels := config.GetBool(config.KeyTreeColumnsLabels)
 	defer func() {
 		_ = config.Set(config.KeyTreeShowColumns, origShowColumns)
 		_ = config.Set(config.KeyTreeColumnsLastUpdated, origLastUpdated)
 		_ = config.Set(config.KeyTreeColumnsAssignee, origAssignee)
 		_ = config.Set(config.KeyTreeColumnsComments, origComments)
+		_ = config.Set(config.KeyTreeColumnsLabels, origLabels)
 	}()
 
-	// Enable all columns for testing
+	// Enable the three fixed-width columns under test; the labels column is
+	// exercised separately and disabled here so width math stays predictable.
 	_ = config.Set(config.KeyTreeShowColumns, true)
 	_ = config.Set(config.KeyTreeColumnsLastUpdated, true)
 	_ = config.Set(config.KeyTreeColumnsAssignee, true)
 	_ = config.Set(config.KeyTreeColumnsComments, true)
+	_ = config.Set(config.KeyTreeColumnsLabels, false)
 
 	// Column widths: lastUpdated=8, assignee=10, comments=5, separator=3
 	// Inter-column spaces: 1 gap per adjacent pair
@@ -191,17 +273,20 @@ func TestPrepareColumnState_AssigneeColumnOrder(t *testing.T) {
 	origLastUpdated := config.GetBool(config.KeyTreeColumnsLastUpdated)
 	origAssignee := config.GetBool(config.KeyTreeColumnsAssignee)
 	origComments := config.GetBool(config.KeyTreeColumnsComments)
+	origLabels := config.GetBool(config.KeyTreeColumnsLabels)
 	defer func() {
 		_ = config.Set(config.KeyTreeShowColumns, origShowColumns)
 		_ = config.Set(config.KeyTreeColumnsLastUpdated, origLastUpdated)
 		_ = config.Set(config.KeyTreeColumnsAssignee, origAssignee)
 		_ = config.Set(config.KeyTreeColumnsComments, origComments)
+		_ = config.Set(config.KeyTreeColumnsLabels, origLabels)
 	}()
 
 	_ = config.Set(config.KeyTreeShowColumns, true)
 	_ = config.Set(config.KeyTreeColumnsLastUpdated, true)
 	_ = config.Set(config.KeyTreeColumnsAssignee, true)
 	_ = config.Set(config.KeyTreeColumnsComments, true)
+	_ = config.Set(config.KeyTreeColumnsLabels, false)
 
 	// Wide terminal: all 3 columns should be present in order lastUpdated, assignee, comments
 	state, _ := prepareColumnState(120)

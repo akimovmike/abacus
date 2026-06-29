@@ -47,7 +47,8 @@ func TestColumnsOverlayFooterHintsFollowCurrentRowKind(t *testing.T) {
 		{"esc", "Close"},
 	})
 
-	overlay.cursor = 4
+	// Row 5 is the first label column (after master + 4 builtin rows).
+	overlay.cursor = 5
 	assertFooterHints(t, overlay.footerHints(), []footerHint{
 		{"↑↓", "Navigate"},
 		{"space", "Toggle"},
@@ -204,7 +205,7 @@ func TestColumnsOverlayEditsAndRemovesLabelColumn(t *testing.T) {
 	overlay.labelColumns = []LabelColumnConfig{
 		{Label: "ui-redesign", DisplayName: "redesign", Enabled: true},
 	}
-	overlay.cursor = 4
+	overlay.cursor = 5 // first label column row (after master + 4 builtins)
 
 	updated, cmd := overlay.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{'e'}})
 	overlay = updated
@@ -243,7 +244,7 @@ func TestColumnsOverlayEscFromEditingReturnsToMainView(t *testing.T) {
 	overlay.labelColumns = []LabelColumnConfig{
 		{Label: "ui-redesign", DisplayName: "redesign", Enabled: true},
 	}
-	overlay.cursor = 4
+	overlay.cursor = 5 // first label column row (after master + 4 builtins)
 
 	updated, _ := overlay.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{'e'}})
 	overlay = updated

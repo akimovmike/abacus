@@ -92,6 +92,11 @@ func (m *App) delegateToOverlay(msg tea.KeyMsg) (tea.Cmd, bool) {
 		return cmd, true
 	}
 
+	if m.activeOverlay == OverlayLabelColors && m.labelColorsOverlay != nil {
+		m.labelColorsOverlay, cmd = m.labelColorsOverlay.Update(msg)
+		return cmd, true
+	}
+
 	return nil, false
 }
 
@@ -194,6 +199,8 @@ func (m *App) handleGlobalKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 		return m, nil
 	case key.Matches(msg, m.keys.ToggleColumns):
 		return m.handleToggleColumnsKey()
+	case key.Matches(msg, m.keys.LabelColors):
+		return m.handleLabelColorsKey()
 	case key.Matches(msg, m.keys.Error):
 		if m.lastError != "" && !m.showErrorToast {
 			m.showErrorToast = true
@@ -302,6 +309,13 @@ func (m *App) handleCopyKey() (tea.Model, tea.Cmd) {
 func (m *App) handleToggleColumnsKey() (tea.Model, tea.Cmd) {
 	m.columnsOverlay = NewColumnsOverlay(m.getAllLabels())
 	m.activeOverlay = OverlayColumns
+	return m, nil
+}
+
+// handleLabelColorsKey opens the label colors overlay.
+func (m *App) handleLabelColorsKey() (tea.Model, tea.Cmd) {
+	m.labelColorsOverlay = NewLabelColorsOverlay(m.getAllLabels(), config.LabelColors())
+	m.activeOverlay = OverlayLabelColors
 	return m, nil
 }
 

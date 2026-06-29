@@ -373,3 +373,23 @@ func transferCommentState(roots []*graph.Node, state map[string]commentState) {
 	}
 	walk(roots)
 }
+
+// invalidateCommentCache resets the comment cache for the given issue ID across
+// the tree so the background loader re-fetches it on the next refresh. Called
+// after adding a comment: without it, collectCommentState/transferCommentState
+// copy the stale (often empty) comment list back onto the refreshed node and the
+// just-added comment never appears (ab-udk6).
+func invalidateCommentCache(roots []*graph.Node, issueID string) {
+	var walk func([]*graph.Node)
+	walk = func(nodes []*graph.Node) {
+		for _, n := range nodes {
+			if n.Issue.ID == issueID {
+				n.Issue.Comments = nil
+				n.CommentsLoaded = false
+				n.CommentError = ""
+			}
+			walk(n.Children)
+		}
+	}
+	walk(roots)
+}

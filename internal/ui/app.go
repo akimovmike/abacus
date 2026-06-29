@@ -43,6 +43,7 @@ const (
 	OverlayComment
 	OverlayPriority
 	OverlayColumns
+	OverlayLabelColors
 )
 
 // Layout describes how the tree and detail panes are arranged.
@@ -192,14 +193,15 @@ type App struct {
 	keys     KeyMap
 
 	// Overlay state
-	activeOverlay   OverlayType
-	statusOverlay   *StatusOverlay
-	labelsOverlay   *LabelsOverlay
-	createOverlay   *CreateOverlay
-	deleteOverlay   *DeleteOverlay
-	commentOverlay  *CommentOverlay
-	priorityOverlay *PriorityOverlay
-	columnsOverlay  *ColumnsOverlay
+	activeOverlay      OverlayType
+	statusOverlay      *StatusOverlay
+	labelsOverlay      *LabelsOverlay
+	createOverlay      *CreateOverlay
+	deleteOverlay      *DeleteOverlay
+	commentOverlay     *CommentOverlay
+	priorityOverlay    *PriorityOverlay
+	columnsOverlay     *ColumnsOverlay
+	labelColorsOverlay *LabelColorsOverlay
 
 	// Labels toast state
 	labelsToastVisible bool

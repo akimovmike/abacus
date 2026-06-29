@@ -7,8 +7,19 @@ import (
 	tea "github.com/charmbracelet/bubbletea"
 	"github.com/charmbracelet/lipgloss"
 
+	"abacus/internal/config"
 	"abacus/internal/ui/theme"
 )
+
+// labelChipColor returns the chip background color for a label: a user-configured
+// custom color if set (ab-vxej), otherwise the theme's Info color. Lookup is
+// case-insensitive because the config layer lowercases stored keys.
+func labelChipColor(label string) lipgloss.TerminalColor {
+	if hex, ok := config.LabelColors()[strings.ToLower(label)]; ok && strings.TrimSpace(hex) != "" {
+		return lipgloss.Color(hex)
+	}
+	return theme.Current().Info()
+}
 
 // ChipListState represents the current mode of the chip list.
 type ChipListState int
@@ -434,35 +445,27 @@ const (
 // renderPillChip renders a label as a pill-shaped chip using powerline glyphs.
 // The pill has curved edges and a solid background color for the label text.
 func renderPillChip(label string, state chipState) string {
-	var bgColor, fgColor lipgloss.TerminalColor
-
 	t := theme.Current()
 	switch state {
 	case chipStateHighlight:
-		bgColor = t.BackgroundSecondary() // Purple for selection
-		fgColor = t.Text()
+		return renderChipWithColors(label, t.BackgroundSecondary(), t.Text(), true) // Purple for selection
 	case chipStateFlash:
-		bgColor = t.Warning() // Orange flash for duplicate
-		fgColor = t.Text()
+		return renderChipWithColors(label, t.Warning(), t.Text(), true) // Orange flash for duplicate
 	default:
-		bgColor = t.Info()       // Try Info (cyan/teal) for visible labels
-		fgColor = t.Background() // Use background color for contrast
+		// Custom per-label color (or theme Info), background-colored text for contrast.
+		return renderChipWithColors(label, labelChipColor(label), t.Background(), false)
 	}
+}
 
-	// Left cap: foreground is the chip color (creates the curved colored edge)
-	leftCap := lipgloss.NewStyle().Foreground(bgColor).Render(pillLeft)
-
-	// Label text: colored background with contrasting text
-	labelStyle := lipgloss.NewStyle().
-		Foreground(fgColor).
-		Background(bgColor)
-	if state == chipStateHighlight || state == chipStateFlash {
+// renderChipWithColors renders a pill chip with explicit background/foreground
+// colors. The caps take the chip color as foreground to form the curved edges.
+func renderChipWithColors(label string, bg, fg lipgloss.TerminalColor, bold bool) string {
+	leftCap := lipgloss.NewStyle().Foreground(bg).Render(pillLeft)
+	labelStyle := lipgloss.NewStyle().Foreground(fg).Background(bg)
+	if bold {
 		labelStyle = labelStyle.Bold(true)
 	}
 	labelText := labelStyle.Render(label)
-
-	// Right cap: foreground is the chip color
-	rightCap := lipgloss.NewStyle().Foreground(bgColor).Render(pillRight)
-
+	rightCap := lipgloss.NewStyle().Foreground(bg).Render(pillRight)
 	return leftCap + labelText + rightCap
 }

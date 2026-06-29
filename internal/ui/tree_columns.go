@@ -51,6 +51,12 @@ var defaultTreeColumns = []treeColumn{
 		Width:     5,
 		Render:    renderCommentsColumn,
 	},
+	{
+		ConfigKey: config.KeyTreeColumnsLabels,
+		Label:     "Labels",
+		Width:     labelsColumnWidth,
+		Render:    renderLabelsColumn(labelsColumnWidth),
+	},
 }
 
 type columnState struct {
@@ -277,6 +283,67 @@ func renderLabelColumn(label, displayName string) func(*graph.Node) string {
 		}
 		return ""
 	}
+}
+
+// labelsColumnWidth is the fixed display width of the all-labels column.
+const labelsColumnWidth = 24
+
+// renderLabelsColumn returns a renderer for the all-labels column: every label
+// on the issue shown as a colored chip within the given fixed width (ab-chpa).
+func renderLabelsColumn(width int) func(*graph.Node) string {
+	return func(node *graph.Node) string {
+		if node == nil || len(node.Issue.Labels) == 0 {
+			return ""
+		}
+		return renderLabelChips(node.Issue.Labels, width)
+	}
+}
+
+// renderLabelChips renders labels as space-separated pill chips, fitting as many
+// as possible within maxWidth and collapsing the remainder into a "+N" marker.
+// The marker width is reserved up front so the result never exceeds maxWidth.
+func renderLabelChips(labels []string, maxWidth int) string {
+	if len(labels) == 0 || maxWidth <= 0 {
+		return ""
+	}
+	const sepWidth = 1 // single space between chips and before the marker
+	var b strings.Builder
+	used := 0
+	shown := 0
+	for i, label := range labels {
+		chip := renderPillChip(label, chipStateNormal)
+		w := lipgloss.Width(chip)
+		sep := 0
+		if shown > 0 {
+			sep = sepWidth
+		}
+		// Reserve room for a "+N" marker if any labels remain after this one.
+		reserve := 0
+		if remaining := len(labels) - i - 1; remaining > 0 {
+			reserve = sepWidth + lipgloss.Width(labelOverflowMarker(remaining))
+		}
+		if used+sep+w+reserve > maxWidth {
+			break
+		}
+		if shown > 0 {
+			b.WriteString(" ")
+			used += sepWidth
+		}
+		b.WriteString(chip)
+		used += w
+		shown++
+	}
+	if shown < len(labels) {
+		if shown > 0 {
+			b.WriteString(" ")
+		}
+		b.WriteString(labelOverflowMarker(len(labels) - shown))
+	}
+	return b.String()
+}
+
+func labelOverflowMarker(n int) string {
+	return fmt.Sprintf("+%d", n)
 }
 
 func labelColumnDisplayName(col LabelColumnConfig) string {

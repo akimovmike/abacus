@@ -276,6 +276,10 @@ func (m *App) handleOverlayMsg(msg tea.Msg) (tea.Model, tea.Cmd, bool) {
 			return m, scheduleErrorToastTick(), true
 		}
 		m.displayCommentToast(msg.issueID)
+		// Drop the stale comment cache for this issue so the post-refresh
+		// background load re-fetches it; otherwise the just-added comment is
+		// masked by the cached (often empty) list and never appears (ab-udk6).
+		invalidateCommentCache(m.roots, msg.issueID)
 		return m, tea.Batch(m.forceRefresh(), scheduleCommentToastTick()), true
 
 	case commentToastTickMsg:
@@ -297,6 +301,26 @@ func (m *App) handleOverlayMsg(msg tea.Msg) (tea.Model, tea.Cmd, bool) {
 	case PriorityCancelledMsg:
 		m.activeOverlay = OverlayNone
 		m.priorityOverlay = nil
+		return m, nil, true
+
+	case LabelColorsChangedMsg:
+		m.activeOverlay = OverlayNone
+		m.labelColorsOverlay = nil
+		if err := config.SaveLabelColors(msg.Colors); err != nil {
+			m.lastError = err.Error()
+			m.lastErrorSource = errorSourceOperation
+			m.showErrorToast = true
+			m.errorToastStart = time.Now()
+			return m, scheduleErrorToastTick(), true
+		}
+		// Re-render the tree's labels column and detail pane with new colors.
+		m.recalcVisibleRows()
+		m.updateViewportContent()
+		return m, nil, true
+
+	case LabelColorsCancelledMsg:
+		m.activeOverlay = OverlayNone
+		m.labelColorsOverlay = nil
 		return m, nil, true
 
 	case priorityUpdateCompleteMsg:

@@ -250,6 +250,32 @@ func TestSetUpdatesValue(t *testing.T) {
 	}
 }
 
+func TestLabelColors(t *testing.T) {
+	reset()
+	t.Cleanup(reset)
+
+	tmp := t.TempDir()
+	if err := Initialize(WithWorkingDir(tmp)); err != nil {
+		t.Fatalf("Initialize returned error: %v", err)
+	}
+
+	if got := LabelColors(); len(got) != 0 {
+		t.Fatalf("expected no label colors by default, got %v", got)
+	}
+
+	if err := Set(KeyTreeLabelColors, map[string]string{"bug": "#ff0000", "ui": "#00ff00"}); err != nil {
+		t.Fatalf("Set returned error: %v", err)
+	}
+
+	got := LabelColors()
+	if got["bug"] != "#ff0000" {
+		t.Fatalf("expected bug=#ff0000, got %q (map=%v)", got["bug"], got)
+	}
+	if got["ui"] != "#00ff00" {
+		t.Fatalf("expected ui=#00ff00, got %q (map=%v)", got["ui"], got)
+	}
+}
+
 func TestFindsAncestorProjectConfig(t *testing.T) {
 	reset()
 	t.Cleanup(reset)

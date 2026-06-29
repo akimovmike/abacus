@@ -53,6 +53,7 @@ type KeyMap struct {
 
 	// Columns
 	ToggleColumns key.Binding
+	LabelColors   key.Binding
 
 	// Update
 	Update key.Binding
@@ -209,6 +210,10 @@ func DefaultKeyMap() KeyMap {
 		ToggleColumns: key.NewBinding(
 			key.WithKeys("C"),
 			key.WithHelp("C", "Columns"),
+		),
+		LabelColors: key.NewBinding(
+			key.WithKeys("#"),
+			key.WithHelp("#", "Label colors"),
 		),
 
 		// Update

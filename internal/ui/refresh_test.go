@@ -228,3 +228,48 @@ func TestCommentStatePreservedAcrossRefresh(t *testing.T) {
 		t.Fatalf("expected 'comment A', got %q", refreshedRoots[0].Issue.Comments[0].Text)
 	}
 }
+
+// TestInvalidateCommentCache verifies that invalidating an issue's comment
+// cache resets the node so the background loader re-fetches it, and (critically)
+// that the invalidated node is no longer captured by collectCommentState — which
+// is what previously re-masked a freshly added comment across a refresh (ab-udk6).
+func TestInvalidateCommentCache(t *testing.T) {
+	roots := []*graph.Node{
+		{
+			Issue:          beads.FullIssue{ID: "ab-001", Comments: []beads.Comment{{ID: "1", Text: "old"}}},
+			CommentsLoaded: true,
+			Children: []*graph.Node{
+				{
+					Issue:          beads.FullIssue{ID: "ab-002"},
+					CommentsLoaded: true,
+					CommentError:   "boom",
+				},
+			},
+		},
+	}
+
+	invalidateCommentCache(roots, "ab-002")
+
+	child := roots[0].Children[0]
+	if child.CommentsLoaded {
+		t.Fatal("ab-002 CommentsLoaded should be false after invalidate")
+	}
+	if child.CommentError != "" {
+		t.Fatalf("ab-002 CommentError should be cleared, got %q", child.CommentError)
+	}
+	if child.Issue.Comments != nil {
+		t.Fatal("ab-002 Comments should be nil after invalidate")
+	}
+
+	if !roots[0].CommentsLoaded {
+		t.Fatal("ab-001 should be untouched by invalidate of ab-002")
+	}
+
+	// Regression: an invalidated node must not be captured here, otherwise
+	// transferCommentState would copy the stale empty list back onto the
+	// refreshed node and hide the just-added comment.
+	state := collectCommentState(roots)
+	if _, ok := state["ab-002"]; ok {
+		t.Fatal("invalidated ab-002 must not be captured by collectCommentState")
+	}
+}

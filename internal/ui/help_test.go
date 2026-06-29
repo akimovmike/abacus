@@ -92,9 +92,16 @@ func TestGetHelpSections(t *testing.T) {
 		}
 	})
 
-	t.Run("ActionsHas10Rows", func(t *testing.T) {
-		if len(sections[1].rows) != 10 {
-			t.Errorf("Actions section: expected 10 rows, got %d", len(sections[1].rows))
+	t.Run("ActionsHas11Rows", func(t *testing.T) {
+		if len(sections[1].rows) != 11 {
+			t.Errorf("Actions section: expected 11 rows, got %d", len(sections[1].rows))
+		}
+	})
+
+	t.Run("ActionsIncludesLabelColors", func(t *testing.T) {
+		if !helpSectionContains(sections[1], keys.LabelColors.Help().Key, keys.LabelColors.Help().Desc) {
+			t.Errorf("Actions section missing LabelColors help row %q/%q",
+				keys.LabelColors.Help().Key, keys.LabelColors.Help().Desc)
 		}
 	})
 

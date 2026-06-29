@@ -31,7 +31,9 @@ const (
 	KeyTreeColumnsLastUpdated = "tree.columns.lastUpdated"
 	KeyTreeColumnsAssignee    = "tree.columns.assignee"
 	KeyTreeColumnsComments    = "tree.columns.comments"
+	KeyTreeColumnsLabels      = "tree.columns.labels"
 	KeyTreeLabelColumns       = "tree.labelColumns"
+	KeyTreeLabelColors        = "tree.labelColors"
 
 	// Backend selection keys
 	KeyBeadsBackend                  = "beads.backend"                       // "bd" or "br", empty means auto-detect
@@ -302,7 +304,9 @@ func setDefaults(v *viper.Viper) {
 	v.SetDefault(KeyTreeColumnsLastUpdated, true)
 	v.SetDefault(KeyTreeColumnsAssignee, true)
 	v.SetDefault(KeyTreeColumnsComments, true)
+	v.SetDefault(KeyTreeColumnsLabels, true)
 	v.SetDefault(KeyTreeLabelColumns, []map[string]any{})
+	v.SetDefault(KeyTreeLabelColors, map[string]string{})
 	v.SetDefault(KeyBeadsBackend, "")                     // Empty means auto-detect
 	v.SetDefault(KeyBdUnsupportedVersionWarnShown, false) // One-time warning not yet shown
 	v.SetDefault(KeyLayoutMode, "wide")
@@ -576,6 +580,53 @@ func SaveColumns(showColumns bool, builtins map[string]bool, labelColumns []map[
 		return fmt.Errorf("write config: %w", err)
 	}
 
+	return nil
+}
+
+// LabelColors returns the configured label -> hex color overrides.
+// ponytail: viper lowercases nested map keys; beads labels are kebab-case
+// lowercase in practice, so look-ups should lowercase the label to match.
+func LabelColors() map[string]string {
+	v, err := getViper()
+	if err != nil {
+		return map[string]string{}
+	}
+	colors := v.GetStringMapString(KeyTreeLabelColors)
+	if colors == nil {
+		return map[string]string{}
+	}
+	return colors
+}
+
+// SaveLabelColors persists label color overrides to the project config file and
+// updates the live configuration so the change takes effect immediately.
+func SaveLabelColors(colors map[string]string) error {
+	if colors == nil {
+		colors = map[string]string{}
+	}
+	if err := Set(KeyTreeLabelColors, colors); err != nil {
+		return err
+	}
+
+	targetPath, err := localProjectConfigPath()
+	if err != nil {
+		return err
+	}
+
+	v := viper.New()
+	v.SetConfigType("yaml")
+	v.SetConfigFile(targetPath)
+	_ = v.ReadInConfig()
+	v.Set(KeyTreeLabelColors, colors)
+
+	dir := filepath.Dir(targetPath)
+	//nolint:gosec // G301: Config directory needs standard permissions
+	if err := os.MkdirAll(dir, 0755); err != nil {
+		return fmt.Errorf("create config directory: %w", err)
+	}
+	if err := v.WriteConfigAs(targetPath); err != nil {
+		return fmt.Errorf("write config: %w", err)
+	}
 	return nil
 }
 

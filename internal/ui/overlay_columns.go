@@ -61,6 +61,7 @@ func NewColumnsOverlay(allLabels []string) *ColumnsOverlay {
 			config.KeyTreeColumnsLastUpdated: config.GetBool(config.KeyTreeColumnsLastUpdated),
 			config.KeyTreeColumnsAssignee:    config.GetBool(config.KeyTreeColumnsAssignee),
 			config.KeyTreeColumnsComments:    config.GetBool(config.KeyTreeColumnsComments),
+			config.KeyTreeColumnsLabels:      config.GetBool(config.KeyTreeColumnsLabels),
 		},
 		labelColumns: configuredLabelColumns(),
 		allLabels:    labels,
@@ -392,6 +393,7 @@ func (m *ColumnsOverlay) rows() []columnOverlayRow {
 		{kind: columnOverlayRowBuiltin, key: config.KeyTreeColumnsLastUpdated, label: "Last Updated", enabled: m.builtins[config.KeyTreeColumnsLastUpdated]},
 		{kind: columnOverlayRowBuiltin, key: config.KeyTreeColumnsAssignee, label: "Assignee", enabled: m.builtins[config.KeyTreeColumnsAssignee]},
 		{kind: columnOverlayRowBuiltin, key: config.KeyTreeColumnsComments, label: "Comments", enabled: m.builtins[config.KeyTreeColumnsComments]},
+		{kind: columnOverlayRowBuiltin, key: config.KeyTreeColumnsLabels, label: "Labels", enabled: m.builtins[config.KeyTreeColumnsLabels]},
 	}
 	for i, col := range m.labelColumns {
 		rows = append(rows, columnOverlayRow{

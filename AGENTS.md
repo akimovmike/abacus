@@ -24,7 +24,7 @@ Append `VERBOSE=1` to any target to surface failures.
 - **CLI** `cmd/abacus/`: `main.go` flags -> `startup.go` spinner -> `version_gate.go`. Component demos in `cmd/combobox-demo/`, `cmd/chips-demo/`, `cmd/chipcombobox-demo/`.
 - **TUI** `internal/ui/`: Bubble Tea Model/Update/View. `app.go` state; `update_keys.go`/`update_overlay.go` input; `view.go`/`tree.go`/`detail.go` render; `overlay_*.go` modals; `footer.go`/`help.go` chrome; `chips.go`/`combobox.go`/`chipcombobox.go` inputs; `cell_canvas.go`/`surface.go`/`layer.go` compositor.
 - **Themes** `internal/ui/theme/`: 20+ themes; `manager.go` registry, `theme.go` interface.
-- **Backends** `internal/beads/`: `client.go` = `Reader`+`Writer`; SQLite reads (`bd_sqlite.go`/`br_sqlite.go`) + CLI writes (`bd_cli.go`/`br_cli.go`); `backend.go` autodetect; `mock.go` + `conformance_test.go`.
+- **Backends** `internal/beads/`: `client.go` = `Reader`+`Writer`; SQLite reads (`bd_sqlite.go`/`br_sqlite.go`) or Dolt-CLI reads (`bd_dolt.go`/`br_dolt.go`) + CLI writes (`bd_cli.go`/`br_cli.go`); `backend.go`/`context.go` autodetect store kind; `mock.go` + `conformance_test.go`.
 - **Graph** `internal/graph/builder.go` (deps -> tree, cycle check). **Domain** `internal/domain/` (status/priority/transitions). **Config** `internal/config/` (Viper: `~/.abacus/`, `.abacus/`). Also `internal/update/`, `internal/debug/`, `internal/errors/`.
 - Reference docs: `CONTEXT.md` (vocabulary), `docs/UI_PRINCIPLES.md`, `docs/BEAD_MODEL.md`, `docs/spec.md`, `docs/adr/`.
 
