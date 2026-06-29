@@ -276,10 +276,15 @@ func (m *App) handleOverlayMsg(msg tea.Msg) (tea.Model, tea.Cmd, bool) {
 			return m, scheduleErrorToastTick(), true
 		}
 		m.displayCommentToast(msg.issueID)
-		// Drop the stale comment cache for this issue so the post-refresh
-		// background load re-fetches it; otherwise the just-added comment is
-		// masked by the cached (often empty) list and never appears (ab-udk6).
-		invalidateCommentCache(m.roots, msg.issueID)
+		// Apply the freshly fetched comments directly so the new one shows now
+		// and survives the refresh (ab-j4pi.2); fall back to cache invalidation
+		// if the re-fetch failed, so the background loader retries (ab-udk6).
+		if msg.fetched {
+			applyCommentsToNode(m.roots, msg.issueID, msg.comments)
+		} else {
+			invalidateCommentCache(m.roots, msg.issueID)
+		}
+		m.updateViewportContent()
 		return m, tea.Batch(m.forceRefresh(), scheduleCommentToastTick()), true
 
 	case commentToastTickMsg:

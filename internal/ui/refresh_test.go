@@ -273,3 +273,30 @@ func TestInvalidateCommentCache(t *testing.T) {
 		t.Fatal("invalidated ab-002 must not be captured by collectCommentState")
 	}
 }
+
+// TestApplyCommentsToNode verifies a freshly fetched comment set is applied to
+// the matching node and marked loaded, so it survives the next refresh (ab-j4pi.2).
+func TestApplyCommentsToNode(t *testing.T) {
+	roots := []*graph.Node{
+		{Issue: beads.FullIssue{ID: "ab-001"}},
+	}
+
+	applyCommentsToNode(roots, "ab-001", []beads.Comment{{ID: "1", Text: "fresh"}})
+
+	n := roots[0]
+	if !n.CommentsLoaded {
+		t.Fatal("expected CommentsLoaded=true after apply")
+	}
+	if len(n.Issue.Comments) != 1 || n.Issue.Comments[0].Text != "fresh" {
+		t.Fatalf("expected the fetched comment applied, got %+v", n.Issue.Comments)
+	}
+	if n.CommentError != "" {
+		t.Fatalf("expected CommentError cleared, got %q", n.CommentError)
+	}
+
+	// Loaded + non-empty must be captured so transfer preserves it across refresh.
+	state := collectCommentState(roots)
+	if _, ok := state["ab-001"]; !ok {
+		t.Fatal("expected applied comments to be captured by collectCommentState")
+	}
+}

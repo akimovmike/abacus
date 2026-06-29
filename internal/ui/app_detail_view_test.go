@@ -199,6 +199,65 @@ func TestUpdateViewportContentOmitsDesignWhenBlank(t *testing.T) {
 	}
 }
 
+// TestUpdateViewportContentHidesEmptyComments verifies the Comments section is
+// hidden when an issue has no comments — whether loaded or still pending — so no
+// empty "Comments:" area appears (ab-j4pi.3).
+func TestUpdateViewportContentHidesEmptyComments(t *testing.T) {
+	for _, loaded := range []bool{true, false} {
+		node := &graph.Node{
+			Issue: beads.FullIssue{
+				ID:          "ab-103",
+				Title:       "No Comments",
+				Status:      "open",
+				IssueType:   "task",
+				Priority:    2,
+				Description: "Body.",
+			},
+			CommentsLoaded: loaded,
+		}
+		app := &App{
+			ShowDetails:  true,
+			visibleRows:  nodesToRows(node),
+			viewport:     viewport.New(90, 30),
+			outputFormat: "plain",
+		}
+		app.updateViewportContent()
+		content := stripANSI(app.viewport.View())
+		if strings.Contains(content, "Comments:") {
+			t.Fatalf("expected no Comments section when empty (loaded=%v):\n%s", loaded, content)
+		}
+		if strings.Contains(content, "Loading comments") {
+			t.Fatalf("expected no loading placeholder (loaded=%v):\n%s", loaded, content)
+		}
+	}
+}
+
+// TestUpdateViewportContentShowsCommentsWhenPresent confirms comments still render.
+func TestUpdateViewportContentShowsCommentsWhenPresent(t *testing.T) {
+	node := &graph.Node{
+		Issue: beads.FullIssue{
+			ID:        "ab-104",
+			Title:     "Has Comments",
+			Status:    "open",
+			IssueType: "task",
+			Priority:  2,
+			Comments:  []beads.Comment{{Author: "A", Text: "hello there", CreatedAt: "2025-11-21T13:00:00Z"}},
+		},
+		CommentsLoaded: true,
+	}
+	app := &App{
+		ShowDetails:  true,
+		visibleRows:  nodesToRows(node),
+		viewport:     viewport.New(90, 30),
+		outputFormat: "plain",
+	}
+	app.updateViewportContent()
+	content := stripANSI(app.viewport.View())
+	if !strings.Contains(content, "Comments:") || !strings.Contains(content, "hello there") {
+		t.Fatalf("expected Comments section with the comment text:\n%s", content)
+	}
+}
+
 func TestUpdateViewportContentDisplaysAcceptanceSection(t *testing.T) {
 	node := &graph.Node{
 		Issue: beads.FullIssue{

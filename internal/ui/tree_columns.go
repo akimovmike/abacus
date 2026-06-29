@@ -311,7 +311,7 @@ func renderLabelChips(labels []string, maxWidth int) string {
 	used := 0
 	shown := 0
 	for i, label := range labels {
-		chip := renderPillChip(label, chipStateNormal)
+		chip := renderLabelTag(label, customLabelColorHex(label))
 		w := lipgloss.Width(chip)
 		sep := 0
 		if shown > 0 {

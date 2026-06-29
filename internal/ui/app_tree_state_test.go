@@ -592,8 +592,10 @@ func TestCommentLoadedMsgRefreshesDetailPane(t *testing.T) {
 	}
 
 	app.updateViewportContent()
-	if !strings.Contains(app.viewport.View(), "Loading comments") {
-		t.Fatal("expected initial detail view to show loading state")
+	// No comments yet -> the Comments section is hidden entirely (ab-j4pi.3),
+	// no loading placeholder.
+	if strings.Contains(app.viewport.View(), "Comments:") {
+		t.Fatal("expected no Comments section before comments load")
 	}
 
 	comment := beads.Comment{ID: "1", IssueID: root.Issue.ID, Author: "tester", Text: "detail loaded", CreatedAt: time.Now().UTC().Format(time.RFC3339)}

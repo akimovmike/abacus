@@ -30,6 +30,33 @@ func TestLabelChipColor(t *testing.T) {
 	}
 }
 
+func TestRenderLabelTag(t *testing.T) {
+	// Default (no custom color): plain label, no padding, no nerd-font pill caps.
+	def := renderLabelTag("bug", "")
+	if strings.Contains(def, pillLeft) || strings.Contains(def, pillRight) {
+		t.Fatal("default tag must not contain nerd-font pill caps")
+	}
+	if got := stripANSI(def); got != "bug" {
+		t.Fatalf("default tag should be plain %q, got %q", "bug", got)
+	}
+
+	// Custom color: padded colored block, still no nerd-font caps.
+	custom := renderLabelTag("bug", "#ff0000")
+	if strings.Contains(custom, pillLeft) || strings.Contains(custom, pillRight) {
+		t.Fatal("custom tag must not contain nerd-font pill caps")
+	}
+	if got := stripANSI(custom); got != " bug " {
+		t.Fatalf("custom tag should be padded %q, got %q", " bug ", got)
+	}
+}
+
+func TestRenderLabelChipsHasNoNerdFontGlyphs(t *testing.T) {
+	out := renderLabelChips([]string{"bug", "ui", "backend"}, 40)
+	if strings.Contains(out, pillLeft) || strings.Contains(out, pillRight) {
+		t.Fatal("labels column must not contain nerd-font pill caps")
+	}
+}
+
 func TestNewChipList(t *testing.T) {
 	t.Run("DefaultValues", func(t *testing.T) {
 		cl := NewChipList()

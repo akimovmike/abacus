@@ -92,7 +92,7 @@ func (m *App) updateViewportContent() {
 
 		labelSpacer := bgStyle.Render(" ")
 		for _, l := range iss.Labels {
-			rendered := renderPillChip(l, chipStateNormal) + labelSpacer
+			rendered := renderLabelTag(l, customLabelColorHex(l)) + labelSpacer
 			w := lipgloss.Width(rendered)
 			if currentLen+w > availableLabelWidth && currentLen > 0 {
 				labelRows = append(labelRows, currentRow)
@@ -228,11 +228,10 @@ func (m *App) updateViewportContent() {
 		errorBody := styleBlockedText().Render("Failed to load comments. Press 'c' to retry.") + "\n" +
 			indentBlock(wordwrap.String(node.CommentError, vpWidth-4), 2)
 		descSections = append(descSections, renderContentSection("Comments:", errorBody))
-	} else if !node.CommentsLoaded {
-		// Show loading state while comments are fetched in background (ab-o0fm)
-		loadingBody := styleStatsDim().Render("Loading comments...")
-		descSections = append(descSections, renderContentSection("Comments:", loadingBody))
 	} else if len(iss.Comments) > 0 {
+		// Comments section is shown only when there are comments (ab-j4pi.3);
+		// the prior "Loading comments..." placeholder left an empty area on
+		// issues that have none.
 		// Use vpWidth-4 so that after indentBlock adds 2 spaces, lines stay within vpWidth.
 		renderCommentMarkdown := buildMarkdownRenderer(m.outputFormat, vpWidth-4)
 		var commentBlocks []string

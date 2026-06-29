@@ -469,3 +469,25 @@ func renderChipWithColors(label string, bg, fg lipgloss.TerminalColor, bold bool
 	rightCap := lipgloss.NewStyle().Foreground(bg).Render(pillRight)
 	return leftCap + labelText + rightCap
 }
+
+// renderLabelTag renders a label WITHOUT nerd-font glyphs, for the tree labels
+// column and detail pane. A label with a custom color shows as a padded colored
+// block; without one it renders as plain text on the theme background — i.e.
+// transparent (ab-j4pi.1). This keeps labels readable in terminals lacking a
+// patched (nerd) font, where the pill caps render as tofu.
+func renderLabelTag(label, customHex string) string {
+	t := theme.Current()
+	if strings.TrimSpace(customHex) == "" {
+		return lipgloss.NewStyle().Foreground(t.Text()).Render(label)
+	}
+	return lipgloss.NewStyle().
+		Foreground(t.Background()).
+		Background(lipgloss.Color(customHex)).
+		Render(" " + label + " ")
+}
+
+// customLabelColorHex returns the configured custom hex color for a label, or
+// "" when none is set (which renders transparent).
+func customLabelColorHex(label string) string {
+	return config.LabelColors()[strings.ToLower(label)]
+}

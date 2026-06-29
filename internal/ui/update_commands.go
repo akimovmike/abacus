@@ -277,11 +277,23 @@ func scheduleCommentToastTick() tea.Cmd {
 	})
 }
 
-// executeAddComment runs the bd comments add command asynchronously.
+// executeAddComment adds a comment, then re-fetches the issue's comments so the
+// new one shows immediately and survives refresh — independent of the (sometimes
+// slow/contended) background bulk loader (ab-j4pi.2).
 func (m *App) executeAddComment(msg CommentAddedMsg) tea.Cmd {
+	client := m.client
 	return func() tea.Msg {
-		err := m.client.AddComment(context.Background(), msg.IssueID, msg.Comment)
-		return commentCompleteMsg{issueID: msg.IssueID, err: err}
+		if err := client.AddComment(context.Background(), msg.IssueID, msg.Comment); err != nil {
+			return commentCompleteMsg{issueID: msg.IssueID, err: err}
+		}
+		ctx, cancel := context.WithTimeout(context.Background(), refreshTimeout)
+		defer cancel()
+		comments, ferr := client.Comments(ctx, msg.IssueID)
+		return commentCompleteMsg{
+			issueID:  msg.IssueID,
+			comments: comments,
+			fetched:  ferr == nil,
+		}
 	}
 }
 

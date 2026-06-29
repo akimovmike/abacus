@@ -393,3 +393,25 @@ func invalidateCommentCache(roots []*graph.Node, issueID string) {
 	}
 	walk(roots)
 }
+
+// applyCommentsToNode sets freshly fetched comments on the matching node(s) and
+// marks them loaded, so a just-added comment shows immediately and is preserved
+// by collectCommentState/transferCommentState across the next refresh — without
+// waiting on the background bulk loader (ab-j4pi.2).
+func applyCommentsToNode(roots []*graph.Node, issueID string, comments []beads.Comment) {
+	if comments == nil {
+		comments = []beads.Comment{}
+	}
+	var walk func([]*graph.Node)
+	walk = func(nodes []*graph.Node) {
+		for _, n := range nodes {
+			if n.Issue.ID == issueID {
+				n.Issue.Comments = comments
+				n.CommentsLoaded = true
+				n.CommentError = ""
+			}
+			walk(n.Children)
+		}
+	}
+	walk(roots)
+}

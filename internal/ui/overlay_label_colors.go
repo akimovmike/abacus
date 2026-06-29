@@ -5,9 +5,6 @@ import (
 
 	"github.com/charmbracelet/bubbles/key"
 	tea "github.com/charmbracelet/bubbletea"
-	"github.com/charmbracelet/lipgloss"
-
-	"abacus/internal/ui/theme"
 )
 
 // labelColorPalette is the curated set of selectable label colors. Cycling a
@@ -165,21 +162,16 @@ func (m *LabelColorsOverlay) View() string {
 		return b.Build()
 	}
 
-	bg := theme.Current().Background()
 	for i, label := range m.labels {
-		hex, custom := m.colors[label]
-		var color lipgloss.TerminalColor = theme.Current().Info()
-		if custom && hex != "" {
-			color = lipgloss.Color(hex)
-		}
-		chip := renderChipWithColors(label, color, bg, false)
+		hex := m.colors[label] // "" when unset -> renders transparent
+		chip := renderLabelTag(label, hex)
 
 		cursor := "  "
 		if i == m.cursor {
 			cursor = styleStatusSelected().Render("→ ")
 		}
 		swatch := styleStatsDim().Render("default")
-		if custom {
+		if hex != "" {
 			swatch = styleStatsDim().Render(hex)
 		}
 		b.Line(cursor + chip + "  " + swatch)

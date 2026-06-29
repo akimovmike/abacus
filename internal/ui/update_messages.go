@@ -37,8 +37,10 @@ type deleteToastTickMsg struct{}
 
 // Message types for comment operations
 type commentCompleteMsg struct {
-	issueID string
-	err     error
+	issueID  string
+	err      error
+	comments []beads.Comment // freshly fetched comments after a successful add
+	fetched  bool            // true if comments were re-fetched successfully
 }
 
 type commentToastTickMsg struct{}
