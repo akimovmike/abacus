@@ -178,6 +178,53 @@ func TestRefreshErrorReachingThresholdShowsToast(t *testing.T) {
 	}
 }
 
+// TestRefreshFailureDoesNotRefireUntilNewWrite proves the deadline-storm fix:
+// when an auto-refresh bd read is SIGKILLed at the deadline, lastDBModTime is
+// not advanced. The watcher must NOT re-fire the same doomed read on every
+// subsequent tick (the CPU/toast storm); it waits until the DB actually
+// changes again. A manual forceRefresh still bypasses this gate.
+func TestRefreshFailureDoesNotRefireUntilNewWrite(t *testing.T) {
+	dbFile := createTempDBFile(t)
+	app := &App{
+		client:        beads.NewMockClient(),
+		ready:         true,
+		dbPath:        dbFile,
+		lastDBModTime: fileModTime(t, dbFile),
+	}
+
+	// External write bumps mtime -> the first auto-refresh fires.
+	time.Sleep(10 * time.Millisecond)
+	if err := os.WriteFile(dbFile, []byte("write-1"), 0o644); err != nil {
+		t.Fatalf("write db: %v", err)
+	}
+	if cmd := app.checkDBForChanges(); cmd == nil {
+		t.Fatal("expected first refresh to fire after db write")
+	}
+
+	// That refresh fails (bd killed at the deadline); refreshInFlight clears
+	// but lastDBModTime stays stale because no fresh data arrived.
+	model, _ := app.Update(refreshCompleteMsg{err: errors.New("run bd list: signal: killed")})
+	app = model.(*App)
+	if app.refreshInFlight {
+		t.Fatal("refreshInFlight must clear after a failed refresh")
+	}
+
+	// No new write happened: the watcher must stay quiet instead of hammering
+	// bd with the identical doomed read every tick.
+	if cmd := app.checkDBForChanges(); cmd != nil {
+		t.Fatal("must not re-fire refresh for an unchanged DB state after a failure")
+	}
+
+	// A genuinely newer write resumes auto-refresh.
+	time.Sleep(10 * time.Millisecond)
+	if err := os.WriteFile(dbFile, []byte("write-2"), 0o644); err != nil {
+		t.Fatalf("write db: %v", err)
+	}
+	if cmd := app.checkDBForChanges(); cmd == nil {
+		t.Fatal("expected refresh to resume after a newer write")
+	}
+}
+
 func TestRefreshSuccessResetsFailCount(t *testing.T) {
 	tmp := t.TempDir()
 	db := filepath.Join(tmp, "beads.db")

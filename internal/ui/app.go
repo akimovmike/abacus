@@ -138,16 +138,22 @@ type App struct {
 	// Key format: "parentID:nodeID" where parentID is empty for root nodes.
 	expandedInstances map[string]bool
 
-	width            int
-	height           int
-	resizePending    bool      // Resize debounce: tick is scheduled
-	resizeLastEvent  time.Time // Resize debounce: time of last WindowSizeMsg
-	refreshInterval  time.Duration
-	autoRefresh      bool
-	dbPath           string
-	lastDBModTime    time.Time
-	lastRefreshStats string
-	refreshInFlight  bool
+	width           int
+	height          int
+	resizePending   bool      // Resize debounce: tick is scheduled
+	resizeLastEvent time.Time // Resize debounce: time of last WindowSizeMsg
+	refreshInterval time.Duration
+	autoRefresh     bool
+	dbPath          string
+	lastDBModTime   time.Time
+	// lastAttemptedModTime is the newest DB mod time an auto-refresh has been
+	// dispatched for. A failed refresh leaves lastDBModTime stale, so without
+	// this watermark checkDBForChanges would re-fire the same doomed bd read
+	// every tick (the deadline storm). It gates auto-refresh until the DB
+	// changes again; manual forceRefresh bypasses it.
+	lastAttemptedModTime time.Time
+	lastRefreshStats     string
+	refreshInFlight      bool
 	// commentLoadInFlight guards against overlapping background comment loads,
 	// which otherwise pile up under frequent refreshes and exhaust the per-load
 	// timeout, mass-killing in-flight bd show processes.

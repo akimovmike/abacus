@@ -17,7 +17,10 @@ import (
 	tea "github.com/charmbracelet/bubbletea"
 )
 
-const refreshTimeout = 10 * time.Second
+// refreshTimeout bounds a single auto-refresh `bd list` read. It must clear a
+// cold or write-lock-contended read of a large embedded-Dolt store; 10s was
+// too tight and got the bd subprocess SIGKILLed, which fed the re-fire storm.
+const refreshTimeout = 30 * time.Second
 
 // refreshFailToastThreshold is how many consecutive auto-refresh failures must
 // occur before surfacing an error toast. Auto-refresh is best-effort and old
@@ -73,6 +76,13 @@ func (m *App) checkDBForChanges() tea.Cmd {
 		return nil
 	}
 
+	// A prior auto-refresh for this DB state already failed; don't hammer bd
+	// with the same doomed read every tick. Wait for a newer write (mtime
+	// advances past the last attempt) or a manual refresh.
+	if !modTime.After(m.lastAttemptedModTime) {
+		return nil
+	}
+
 	return m.startRefresh(modTime)
 }
 
@@ -81,6 +91,7 @@ func (m *App) startRefresh(targetModTime time.Time) tea.Cmd {
 		return nil
 	}
 	m.refreshInFlight = true
+	m.lastAttemptedModTime = targetModTime
 	return tea.Batch(m.spinner.Tick, refreshDataCmd(m.client, targetModTime))
 }
 
