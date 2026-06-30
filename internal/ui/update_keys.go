@@ -97,6 +97,11 @@ func (m *App) delegateToOverlay(msg tea.KeyMsg) (tea.Cmd, bool) {
 		return cmd, true
 	}
 
+	if m.activeOverlay == OverlayFilter && m.filterOverlay != nil {
+		m.filterOverlay, cmd = m.filterOverlay.Update(msg)
+		return cmd, true
+	}
+
 	return nil, false
 }
 
@@ -201,6 +206,8 @@ func (m *App) handleGlobalKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 		return m.handleToggleColumnsKey()
 	case key.Matches(msg, m.keys.LabelColors):
 		return m.handleLabelColorsKey()
+	case key.Matches(msg, m.keys.Filter):
+		return m.handleFilterKey()
 	case key.Matches(msg, m.keys.Error):
 		if m.lastError != "" && !m.showErrorToast {
 			m.showErrorToast = true
@@ -316,6 +323,14 @@ func (m *App) handleToggleColumnsKey() (tea.Model, tea.Cmd) {
 func (m *App) handleLabelColorsKey() (tea.Model, tea.Cmd) {
 	m.labelColorsOverlay = NewLabelColorsOverlay(m.getAllLabels(), config.LabelColors())
 	m.activeOverlay = OverlayLabelColors
+	return m, nil
+}
+
+// handleFilterKey opens the label/assignee filter overlay, seeded with the
+// currently active filter selections.
+func (m *App) handleFilterKey() (tea.Model, tea.Cmd) {
+	m.filterOverlay = NewFilterOverlay(m.getAllLabels(), m.getAllAssignees(), m.labelFilter, m.assigneeFilter)
+	m.activeOverlay = OverlayFilter
 	return m, nil
 }
 

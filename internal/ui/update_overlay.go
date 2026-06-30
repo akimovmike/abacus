@@ -328,6 +328,20 @@ func (m *App) handleOverlayMsg(msg tea.Msg) (tea.Model, tea.Cmd, bool) {
 		m.labelColorsOverlay = nil
 		return m, nil, true
 
+	case FilterChangedMsg:
+		m.activeOverlay = OverlayNone
+		m.filterOverlay = nil
+		m.labelFilter = msg.Label
+		m.assigneeFilter = msg.Assignee
+		m.recalcVisibleRows()
+		m.updateViewportContent()
+		return m, nil, true
+
+	case FilterCancelledMsg:
+		m.activeOverlay = OverlayNone
+		m.filterOverlay = nil
+		return m, nil, true
+
 	case priorityUpdateCompleteMsg:
 		if msg.err != nil {
 			m.lastError = msg.err.Error()

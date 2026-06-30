@@ -26,6 +26,30 @@ func nodeMatchesFilter(filterLower string, node *graph.Node) bool {
 	return strings.Contains(trimmed, filterLower)
 }
 
+// nodeMatchesLabelFilter reports whether the node carries the given label.
+// An empty filter matches everything. Matching is exact (not substring) so
+// "back" does not match "backend".
+func nodeMatchesLabelFilter(labelFilter string, node *graph.Node) bool {
+	if labelFilter == "" {
+		return true
+	}
+	for _, l := range node.Issue.Labels {
+		if l == labelFilter {
+			return true
+		}
+	}
+	return false
+}
+
+// nodeMatchesAssigneeFilter reports whether the node's assignee equals the
+// given value. An empty filter matches everything.
+func nodeMatchesAssigneeFilter(assigneeFilter string, node *graph.Node) bool {
+	if assigneeFilter == "" {
+		return true
+	}
+	return node.Issue.Assignee == assigneeFilter
+}
+
 // viewModeDef is one entry in the view-mode table: a display name and a
 // predicate reporting whether an issue is shown (true = keep).
 type viewModeDef struct {
@@ -68,10 +92,13 @@ func (m *App) computeFilterEval(filterLower string) map[string]filterEvaluation 
 	evals := make(map[string]filterEvaluation)
 	var walk func(node *graph.Node) bool
 	walk = func(node *graph.Node) bool {
-		// Check BOTH ViewMode AND text filter
+		// Node matches only if it satisfies every active dimension:
+		// view mode, text, label, and assignee.
 		viewModeMatch := nodeMatchesViewMode(m.viewMode, node)
 		textMatch := nodeMatchesFilter(filterLower, node)
-		directMatch := viewModeMatch && textMatch // Node itself matches both filters
+		labelMatch := nodeMatchesLabelFilter(m.labelFilter, node)
+		assigneeMatch := nodeMatchesAssigneeFilter(m.assigneeFilter, node)
+		directMatch := viewModeMatch && textMatch && labelMatch && assigneeMatch
 
 		hasChildMatch := false
 		for _, child := range node.Children {

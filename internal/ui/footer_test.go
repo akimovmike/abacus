@@ -158,8 +158,8 @@ func TestFooterNarrowTerminal(t *testing.T) {
 
 func TestFooterHintSlices(t *testing.T) {
 	t.Run("GlobalHintsCount", func(t *testing.T) {
-		if len(globalFooterHints) != 13 {
-			t.Errorf("expected 13 global hints, got %d", len(globalFooterHints))
+		if len(globalFooterHints) != 14 {
+			t.Errorf("expected 14 global hints, got %d", len(globalFooterHints))
 		}
 	})
 

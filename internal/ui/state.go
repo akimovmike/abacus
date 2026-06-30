@@ -26,6 +26,8 @@ type viewState struct {
 	expandedIDs          map[string]bool
 	expandedInstances    map[string]bool // per-instance state for multi-parent nodes
 	filterText           string
+	labelFilter          string // exact label to filter by; "" = no label filter
+	assigneeFilter       string // exact assignee to filter by; "" = no assignee filter
 	filterCollapsed      map[string]bool
 	filterForcedExpanded map[string]bool
 	viewportYOffset      int
@@ -126,6 +128,8 @@ func (m *App) clampCursor() {
 func (m *App) captureState() viewState {
 	state := viewState{
 		filterText:           m.filterText,
+		labelFilter:          m.labelFilter,
+		assigneeFilter:       m.assigneeFilter,
 		cursorIndex:          m.cursor,
 		treeTopLine:          m.treeTopLine,
 		expandedIDs:          m.collectExpandedIDs(),

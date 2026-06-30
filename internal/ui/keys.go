@@ -55,6 +55,9 @@ type KeyMap struct {
 	ToggleColumns key.Binding
 	LabelColors   key.Binding
 
+	// Filter
+	Filter key.Binding
+
 	// Update
 	Update key.Binding
 
@@ -214,6 +217,11 @@ func DefaultKeyMap() KeyMap {
 		LabelColors: key.NewBinding(
 			key.WithKeys("#"),
 			key.WithHelp("#", "Label colors"),
+		),
+
+		Filter: key.NewBinding(
+			key.WithKeys("f"),
+			key.WithHelp("f", "Filter label/assignee"),
 		),
 
 		// Update

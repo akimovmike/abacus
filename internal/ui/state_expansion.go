@@ -31,7 +31,8 @@ func (m *App) isRowExpandedForTraversal(row graph.TreeRow) bool {
 }
 
 func (m *App) isFilterActive() bool {
-	return m.filterText != "" || m.viewMode != ViewModeAll
+	return m.filterText != "" || m.viewMode != ViewModeAll ||
+		m.labelFilter != "" || m.assigneeFilter != ""
 }
 
 func (m *App) isNodeExpandedInView(row graph.TreeRow) bool {

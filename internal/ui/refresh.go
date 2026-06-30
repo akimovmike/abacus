@@ -184,6 +184,8 @@ func (m *App) applyRefresh(newRoots []*graph.Node, newDigest map[string]string, 
 	m.filterForcedExpanded = copyBoolMap(state.filterForcedExpanded)
 	m.textInput.SetValue(state.filterText)
 	m.viewMode = state.viewMode // Restore view mode across refresh
+	m.labelFilter = state.labelFilter
+	m.assigneeFilter = state.assigneeFilter
 	m.recalcVisibleRows()
 
 	if state.currentID != "" {

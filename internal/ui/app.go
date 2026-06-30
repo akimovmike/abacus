@@ -44,6 +44,7 @@ const (
 	OverlayPriority
 	OverlayColumns
 	OverlayLabelColors
+	OverlayFilter
 )
 
 // Layout describes how the tree and detail panes are arranged.
@@ -126,10 +127,12 @@ type App struct {
 	ready         bool
 	detailIssueID string
 
-	textInput  textinput.Model
-	searching  bool
-	filterText string
-	viewMode   ViewMode // Current view filter mode (see viewModeDefs)
+	textInput      textinput.Model
+	searching      bool
+	filterText     string
+	labelFilter    string   // exact label to filter the tree by; "" = inactive
+	assigneeFilter string   // exact assignee to filter the tree by; "" = inactive
+	viewMode       ViewMode // Current view filter mode (see viewModeDefs)
 	// filterCollapsed tracks nodes explicitly collapsed while a search filter is active.
 	filterCollapsed map[string]bool
 	// filterForcedExpanded tracks nodes temporarily expanded to surface filter matches.
@@ -202,6 +205,7 @@ type App struct {
 	priorityOverlay    *PriorityOverlay
 	columnsOverlay     *ColumnsOverlay
 	labelColorsOverlay *LabelColorsOverlay
+	filterOverlay      *FilterOverlay
 
 	// Labels toast state
 	labelsToastVisible bool

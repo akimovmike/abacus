@@ -59,6 +59,14 @@ func (m *App) View() string {
 		status += " " + styleFilterInfo().Render(filterLabel)
 	}
 
+	if m.labelFilter != "" {
+		status += " " + styleFilterInfo().Render(fmt.Sprintf("Label: %s", m.labelFilter))
+	}
+
+	if m.assigneeFilter != "" {
+		status += " " + styleFilterInfo().Render(fmt.Sprintf("Assignee: %s", m.assigneeFilter))
+	}
+
 	title := "ABACUS"
 	if m.version != "" {
 		title = fmt.Sprintf("ABACUS v%s", m.version)
@@ -185,6 +193,10 @@ func (m *App) View() string {
 		}
 	} else if m.activeOverlay == OverlayLabelColors && m.labelColorsOverlay != nil {
 		if layer := m.labelColorsOverlay.Layer(m.width, m.height, headerHeight, bottomMargin); layer != nil {
+			overlayLayers = append(overlayLayers, layer)
+		}
+	} else if m.activeOverlay == OverlayFilter && m.filterOverlay != nil {
+		if layer := m.filterOverlay.Layer(m.width, m.height, headerHeight, bottomMargin); layer != nil {
 			overlayLayers = append(overlayLayers, layer)
 		}
 	} else if m.showHelp {

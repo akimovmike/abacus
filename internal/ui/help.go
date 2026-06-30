@@ -38,6 +38,7 @@ func getHelpSections(keys KeyMap) []helpSection {
 				{keys.Tab.Help().Key, keys.Tab.Help().Desc},
 				{keys.ShiftTab.Help().Key, keys.ShiftTab.Help().Desc},
 				{keys.CycleViewMode.Help().Key, keys.CycleViewMode.Help().Desc},
+				{keys.Filter.Help().Key, keys.Filter.Help().Desc},
 				{keys.ToggleColumns.Help().Key, keys.ToggleColumns.Help().Desc},
 				{keys.LabelColors.Help().Key, keys.LabelColors.Help().Desc},
 				{keys.Refresh.Help().Key, keys.Refresh.Help().Desc},
