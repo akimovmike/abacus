@@ -9,6 +9,7 @@ import (
 
 	tea "github.com/charmbracelet/bubbletea"
 	"github.com/charmbracelet/lipgloss"
+	"github.com/muesli/termenv"
 )
 
 func TestLabelChipColor(t *testing.T) {
@@ -51,9 +52,28 @@ func TestRenderLabelTag(t *testing.T) {
 }
 
 func TestRenderLabelChipsHasNoNerdFontGlyphs(t *testing.T) {
-	out := renderLabelChips([]string{"bug", "ui", "backend"}, 40)
+	out := renderLabelChips([]string{"bug", "ui", "backend"}, 40, theme.Current().Background())
 	if strings.Contains(out, pillLeft) || strings.Contains(out, pillRight) {
 		t.Fatal("labels column must not contain nerd-font pill caps")
+	}
+}
+
+// TestRenderLabelChipsCarriesThemeBackground guards the label-bg leak: each chip
+// ends with a full ANSI reset that clears any background inherited from the
+// enclosing column style, so every uncolored chip and separator must self-carry
+// the theme background. Without it, the 2nd+ label rendered on the terminal's
+// default background instead of the theme's.
+func TestRenderLabelChipsCarriesThemeBackground(t *testing.T) {
+	prev := lipgloss.ColorProfile()
+	lipgloss.SetColorProfile(termenv.TrueColor)
+	defer lipgloss.SetColorProfile(prev)
+	// Pass a distinctive row background; every chip AND separator must carry it
+	// so labels track the row (theme bg normally, selection bg when selected).
+	out := renderLabelChips([]string{"bug", "ui", "backend"}, 40, lipgloss.Color("#123456"))
+	// #123456 -> truecolor bg "48;2;18;52;86". Expect it on every segment
+	// (2 separators + 3 chips = 5); before the fix uncolored chips emitted none.
+	if n := strings.Count(out, "48;2;18;52;86"); n < 5 {
+		t.Fatalf("expected each chip+separator to carry the row background, got %d bg codes in %q", n, out)
 	}
 }
 

@@ -476,12 +476,22 @@ func renderChipWithColors(label string, bg, fg lipgloss.TerminalColor, bold bool
 // transparent (ab-j4pi.1). This keeps labels readable in terminals lacking a
 // patched (nerd) font, where the pill caps render as tofu.
 func renderLabelTag(label, customHex string) string {
-	t := theme.Current()
+	return renderLabelTagBg(label, customHex, theme.Current().Background())
+}
+
+// renderLabelTagBg is renderLabelTag with an explicit background for the plain
+// (no custom color) case. lipgloss emits a full reset after each rendered chip,
+// which clears any background inherited from the enclosing column/panel style;
+// without a self-carried background the 2nd+ chip in a row would render on the
+// terminal-default background instead of bg (ab-uyts label-bg leak). The tree
+// column passes the current row background (selection highlight when selected)
+// so the labels track the row; other callers pass the theme background.
+func renderLabelTagBg(label, customHex string, bg lipgloss.TerminalColor) string {
 	if strings.TrimSpace(customHex) == "" {
-		return lipgloss.NewStyle().Foreground(t.Text()).Render(label)
+		return lipgloss.NewStyle().Foreground(theme.Current().Text()).Background(bg).Render(label)
 	}
 	return lipgloss.NewStyle().
-		Foreground(t.Background()).
+		Foreground(theme.Current().Background()).
 		Background(lipgloss.Color(customHex)).
 		Render(" " + label + " ")
 }

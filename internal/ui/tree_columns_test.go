@@ -21,21 +21,25 @@ func makeTestNodeWithComments(count int) *graph.Node {
 
 var labelChipPlusRe = regexp.MustCompile(`\+(\d+)`)
 
+// testLabelBg is an arbitrary row background for column render tests; the
+// value only matters to the label-bg leak guard, not to width/content checks.
+var testLabelBg = lipgloss.Color("#1a1a2e")
+
 // TestRenderLabelChips verifies the all-labels column renderer: it shows labels
 // as chips within a fixed width and collapses the overflow into a "+N" marker.
 func TestRenderLabelChips(t *testing.T) {
 	t.Run("empty labels render nothing", func(t *testing.T) {
-		if got := renderLabelChips(nil, 24); got != "" {
+		if got := renderLabelChips(nil, 24, testLabelBg); got != "" {
 			t.Fatalf("expected empty string for no labels, got %q", got)
 		}
-		if got := renderLabelChips([]string{}, 24); got != "" {
+		if got := renderLabelChips([]string{}, 24, testLabelBg); got != "" {
 			t.Fatalf("expected empty string for empty labels, got %q", got)
 		}
 	})
 
 	t.Run("all labels fit", func(t *testing.T) {
 		labels := []string{"bug", "ui"}
-		got := renderLabelChips(labels, 40)
+		got := renderLabelChips(labels, 40, testLabelBg)
 		plain := stripANSI(got)
 		for _, l := range labels {
 			if !strings.Contains(plain, l) {
@@ -53,7 +57,7 @@ func TestRenderLabelChips(t *testing.T) {
 	t.Run("overflow collapses to +N within width", func(t *testing.T) {
 		labels := []string{"alpha", "bravo", "charlie", "delta", "echo"}
 		const maxWidth = 14
-		got := renderLabelChips(labels, maxWidth)
+		got := renderLabelChips(labels, maxWidth, testLabelBg)
 		if w := lipgloss.Width(got); w > maxWidth {
 			t.Fatalf("rendered width %d exceeds max %d (output=%q)", w, maxWidth, stripANSI(got))
 		}
@@ -80,15 +84,15 @@ func TestRenderLabelChips(t *testing.T) {
 
 func TestRenderLabelsColumn(t *testing.T) {
 	render := renderLabelsColumn(24)
-	if got := render(nil); got != "" {
+	if got := render(nil, testLabelBg); got != "" {
 		t.Fatalf("nil node should render empty, got %q", got)
 	}
-	if got := render(&graph.Node{}); got != "" {
+	if got := render(&graph.Node{}, testLabelBg); got != "" {
 		t.Fatalf("node with no labels should render empty, got %q", got)
 	}
 	node := &graph.Node{}
 	node.Issue.Labels = []string{"bug"}
-	if got := stripANSI(render(node)); !strings.Contains(got, "bug") {
+	if got := stripANSI(render(node, testLabelBg)); !strings.Contains(got, "bug") {
 		t.Fatalf("expected label 'bug' in column output, got %q", got)
 	}
 }
@@ -218,7 +222,7 @@ func TestRenderCommentsColumn(t *testing.T) {
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			node := makeTestNodeWithComments(tt.count)
-			got := renderCommentsColumn(node)
+			got := renderCommentsColumn(node, testLabelBg)
 			if got != tt.expected {
 				t.Errorf("renderCommentsColumn(%d comments) = %q, want %q", tt.count, got, tt.expected)
 			}
@@ -227,12 +231,12 @@ func TestRenderCommentsColumn(t *testing.T) {
 }
 
 func TestRenderCommentsColumn_NoNode(t *testing.T) {
-	if got := renderCommentsColumn(nil); got != "" {
+	if got := renderCommentsColumn(nil, testLabelBg); got != "" {
 		t.Errorf("renderCommentsColumn(nil) = %q, want empty", got)
 	}
 
 	node := &graph.Node{CommentsLoaded: false}
-	if got := renderCommentsColumn(node); got != "" {
+	if got := renderCommentsColumn(node, testLabelBg); got != "" {
 		t.Errorf("renderCommentsColumn(not loaded) = %q, want empty", got)
 	}
 }
@@ -254,7 +258,7 @@ func TestRenderAssigneeColumn(t *testing.T) {
 		t.Run(tt.name, func(t *testing.T) {
 			node := &graph.Node{}
 			node.Issue.Assignee = tt.assignee
-			got := renderAssigneeColumn(node)
+			got := renderAssigneeColumn(node, testLabelBg)
 			if got != tt.expected {
 				t.Errorf("renderAssigneeColumn(%q) = %q, want %q", tt.assignee, got, tt.expected)
 			}
@@ -263,7 +267,7 @@ func TestRenderAssigneeColumn(t *testing.T) {
 }
 
 func TestRenderAssigneeColumn_NoNode(t *testing.T) {
-	if got := renderAssigneeColumn(nil); got != "" {
+	if got := renderAssigneeColumn(nil, testLabelBg); got != "" {
 		t.Errorf("renderAssigneeColumn(nil) = %q, want empty", got)
 	}
 }

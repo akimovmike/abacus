@@ -19,7 +19,11 @@ type treeColumn struct {
 	ConfigKey string
 	Label     string
 	Width     int
-	Render    func(*graph.Node) string
+	// Render draws the cell value. bg is the current row background (theme bg,
+	// or the selection/cross-highlight color) so the labels column can paint
+	// chips that track the row; plain-text columns ignore it since the outer
+	// column style already fills their background.
+	Render func(node *graph.Node, bg lipgloss.TerminalColor) string
 }
 
 // LabelColumnConfig stores a user-configured label column.
@@ -72,9 +76,25 @@ func (c columnState) render(node *graph.Node, mode columnRenderMode) string {
 	if !c.enabled() {
 		return ""
 	}
+	bg := columnValueBackground(mode)
 	return c.renderWithProvider(mode, func(col treeColumn) string {
-		return col.Render(node)
+		return col.Render(node, bg)
 	})
+}
+
+// columnValueBackground returns the background the value cells are painted with
+// for the given render mode, mirroring columnStyles' value style. The labels
+// column uses it so its chips track the row highlight.
+func columnValueBackground(mode columnRenderMode) lipgloss.TerminalColor {
+	t := currentThemeWrapper()
+	switch mode {
+	case columnRenderSelected:
+		return t.BackgroundSecondary()
+	case columnRenderCrossHighlight:
+		return t.BorderNormal()
+	default:
+		return t.Background()
+	}
 }
 
 func (c columnState) renderWithProvider(mode columnRenderMode, valueProvider func(treeColumn) string) string {
@@ -183,7 +203,7 @@ func prepareColumnState(totalWidth int) (columnState, int) {
 	return columnState{}, totalWidth
 }
 
-func renderLastUpdatedColumn(node *graph.Node) string {
+func renderLastUpdatedColumn(node *graph.Node, _ lipgloss.TerminalColor) string {
 	if node == nil || node.Issue.UpdatedAt == "" {
 		return ""
 	}
@@ -194,7 +214,7 @@ func renderLastUpdatedColumn(node *graph.Node) string {
 	return FormatRelativeTime(ts)
 }
 
-func renderCommentsColumn(node *graph.Node) string {
+func renderCommentsColumn(node *graph.Node, _ lipgloss.TerminalColor) string {
 	if node == nil || !node.CommentsLoaded {
 		return ""
 	}
@@ -210,7 +230,7 @@ func renderCommentsColumn(node *graph.Node) string {
 	}
 }
 
-func renderAssigneeColumn(node *graph.Node) string {
+func renderAssigneeColumn(node *graph.Node, _ lipgloss.TerminalColor) string {
 	if node == nil || node.Issue.Assignee == "" {
 		return ""
 	}
@@ -271,8 +291,8 @@ func setConfiguredLabelColumns(cols []LabelColumnConfig) error {
 	return config.Set(config.KeyTreeLabelColumns, normalized)
 }
 
-func renderLabelColumn(label, displayName string) func(*graph.Node) string {
-	return func(node *graph.Node) string {
+func renderLabelColumn(label, displayName string) func(*graph.Node, lipgloss.TerminalColor) string {
+	return func(node *graph.Node, _ lipgloss.TerminalColor) string {
 		if node == nil {
 			return ""
 		}
@@ -290,43 +310,47 @@ const labelsColumnWidth = 24
 
 // renderLabelsColumn returns a renderer for the all-labels column: every label
 // on the issue shown as a colored chip within the given fixed width (ab-chpa).
-func renderLabelsColumn(width int) func(*graph.Node) string {
-	return func(node *graph.Node) string {
+func renderLabelsColumn(width int) func(*graph.Node, lipgloss.TerminalColor) string {
+	return func(node *graph.Node, bg lipgloss.TerminalColor) string {
 		if node == nil || len(node.Issue.Labels) == 0 {
 			return ""
 		}
-		return renderLabelChips(node.Issue.Labels, width)
+		return renderLabelChips(node.Issue.Labels, width, bg)
 	}
 }
 
 // renderLabelChips renders labels as space-separated pill chips, fitting as many
 // as possible within maxWidth and collapsing the remainder into a "+N" marker.
 // The marker width is reserved up front so the result never exceeds maxWidth.
-func renderLabelChips(labels []string, maxWidth int) string {
+func renderLabelChips(labels []string, maxWidth int, bg lipgloss.TerminalColor) string {
 	if len(labels) == 0 || maxWidth <= 0 {
 		return ""
 	}
 	const sepWidth = 1 // single space between chips and before the marker
+	// Separators and the marker carry the row background so they don't fall to
+	// the terminal-default background after each chip's reset (ab-uyts).
+	bgStyle := lipgloss.NewStyle().Background(bg)
+	sep := bgStyle.Render(" ")
 	var b strings.Builder
 	used := 0
 	shown := 0
 	for i, label := range labels {
-		chip := renderLabelTag(label, customLabelColorHex(label))
+		chip := renderLabelTagBg(label, customLabelColorHex(label), bg)
 		w := lipgloss.Width(chip)
-		sep := 0
+		sepW := 0
 		if shown > 0 {
-			sep = sepWidth
+			sepW = sepWidth
 		}
 		// Reserve room for a "+N" marker if any labels remain after this one.
 		reserve := 0
 		if remaining := len(labels) - i - 1; remaining > 0 {
 			reserve = sepWidth + lipgloss.Width(labelOverflowMarker(remaining))
 		}
-		if used+sep+w+reserve > maxWidth {
+		if used+sepW+w+reserve > maxWidth {
 			break
 		}
 		if shown > 0 {
-			b.WriteString(" ")
+			b.WriteString(sep)
 			used += sepWidth
 		}
 		b.WriteString(chip)
@@ -335,9 +359,9 @@ func renderLabelChips(labels []string, maxWidth int) string {
 	}
 	if shown < len(labels) {
 		if shown > 0 {
-			b.WriteString(" ")
+			b.WriteString(sep)
 		}
-		b.WriteString(labelOverflowMarker(len(labels) - shown))
+		b.WriteString(bgStyle.Render(labelOverflowMarker(len(labels) - shown)))
 	}
 	return b.String()
 }
