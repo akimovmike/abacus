@@ -51,7 +51,15 @@ func (m *App) displayStatusToast(issueID, newStatus string) {
 
 // displayBulkStatusToast shows a success toast for a multi-bead status change.
 func (m *App) displayBulkStatusToast(count int, newStatus string) {
-	m.displayStatusToast(fmt.Sprintf("%d beads", count), newStatus)
+	m.displayStatusToast(beadCountLabel(count), newStatus)
+}
+
+// beadCountLabel formats a bead count for toast messages ("1 bead", "3 beads").
+func beadCountLabel(count int) string {
+	if count == 1 {
+		return "1 bead"
+	}
+	return fmt.Sprintf("%d beads", count)
 }
 
 // formatStatusLabel converts a status value to a display label.
@@ -336,5 +344,5 @@ func (m *App) displayPriorityToast(issueID string, newPriority int) {
 
 // displayBulkPriorityToast shows a success toast for a multi-bead priority change.
 func (m *App) displayBulkPriorityToast(count int, newPriority int) {
-	m.displayPriorityToast(fmt.Sprintf("%d beads", count), newPriority)
+	m.displayPriorityToast(beadCountLabel(count), newPriority)
 }

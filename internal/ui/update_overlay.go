@@ -27,7 +27,7 @@ func (m *App) handleOverlayMsg(msg tea.Msg) (tea.Model, tea.Cmd, bool) {
 		m.statusOverlay = nil
 		if msg.NewStatus != "" {
 			if m.selectionActive() {
-				cmds := m.bulkStatusCmds(oldStatus, msg.NewStatus)
+				cmds := m.bulkStatusCmds(msg.NewStatus)
 				m.displayBulkStatusToast(len(cmds), msg.NewStatus)
 				m.clearSelection()
 				cmds = append(cmds, scheduleStatusToastTick())

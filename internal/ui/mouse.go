@@ -161,6 +161,7 @@ func (m *App) selectTreeRowAtPointer(event pointerEvent) {
 	if !ok {
 		return
 	}
+	m.clearSelection()
 	row := m.visibleRows[rowIndex]
 	m.cursor = rowIndex
 	m.focus = FocusTree

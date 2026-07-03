@@ -2,14 +2,26 @@ package ui
 
 import tea "github.com/charmbracelet/bubbletea"
 
-// bulkStatusCmds returns one status-change command per selected bead. A
-// closed->open transition uses the reopen path, matching the single-target
-// handler. oldStatus is the status shown in the overlay before the change.
-func (m *App) bulkStatusCmds(oldStatus, newStatus string) []tea.Cmd {
-	ids := m.selectedIssueIDs()
-	cmds := make([]tea.Cmd, 0, len(ids))
-	for _, id := range ids {
-		if oldStatus == "closed" && newStatus == "open" {
+// bulkStatusCmds returns one status-change command per selected bead. Each
+// bead's own current status (not a single snapshot for the whole selection)
+// decides whether it uses the reopen path: a bead only reopens if it is
+// individually closed and newStatus is "open", matching the single-target
+// handler's per-bead behavior.
+func (m *App) bulkStatusCmds(newStatus string) []tea.Cmd {
+	lo, hi := m.selectionBounds()
+	if lo < 0 {
+		return nil
+	}
+	seen := make(map[string]bool, hi-lo+1)
+	cmds := make([]tea.Cmd, 0, hi-lo+1)
+	for i := lo; i <= hi; i++ {
+		node := m.visibleRows[i].Node
+		id := node.Issue.ID
+		if seen[id] {
+			continue
+		}
+		seen[id] = true
+		if node.Issue.Status == "closed" && newStatus == "open" {
 			cmds = append(cmds, m.executeReopenCmd(id))
 		} else {
 			cmds = append(cmds, m.executeStatusChangeCmd(id, newStatus))
