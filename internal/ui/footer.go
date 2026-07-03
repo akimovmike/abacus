@@ -1,6 +1,7 @@
 package ui
 
 import (
+	"fmt"
 	"strings"
 	"time"
 
@@ -158,8 +159,14 @@ func (m *App) renderBackendIndicator() string {
 }
 
 // renderRefreshStatus returns the current refresh status for the footer.
-// Priority: error > refreshing > delta metrics (if changed) > update available > empty
+// Priority: selection count (if active) > error > refreshing > delta metrics
+// (if changed) > update available > empty
 func (m *App) renderRefreshStatus() string {
+	if m.selectionActive() {
+		if ids := m.selectedIssueIDs(); len(ids) > 0 {
+			return styleFooterMuted().Render(fmt.Sprintf("%d selected", len(ids)))
+		}
+	}
 	if m.lastError != "" {
 		return styleErrorIndicator().Render("⚠ Error (!)")
 	}
