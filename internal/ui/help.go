@@ -29,6 +29,8 @@ func getHelpSections(keys KeyMap) []helpSection {
 				{keys.End.Help().Key, keys.End.Help().Desc},
 				{keys.PageUp.Help().Key, keys.PageUp.Help().Desc},
 				{keys.PageDown.Help().Key, keys.PageDown.Help().Desc},
+				{keys.ExtendDown.Help().Key, keys.ExtendDown.Help().Desc},
+				{keys.ExtendUp.Help().Key, keys.ExtendUp.Help().Desc},
 			},
 		},
 		{
@@ -60,6 +62,7 @@ func getHelpSections(keys KeyMap) []helpSection {
 				{keys.Edit.Help().Key, keys.Edit.Help().Desc},
 				{keys.Comment.Help().Key, keys.Comment.Help().Desc},
 				{keys.Delete.Help().Key, keys.Delete.Help().Desc},
+				{"Note", "c/s/p/L apply to whole selection"},
 			},
 		},
 		{
