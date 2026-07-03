@@ -334,8 +334,9 @@ func TestBuildTreeLines_RendersConfiguredLabelColumns(t *testing.T) {
 		Labels: []string{"backend"},
 	}}
 	m := App{
-		visibleRows: nodesToRows(withLabel, withoutLabel),
-		cursor:      -1,
+		visibleRows:  nodesToRows(withLabel, withoutLabel),
+		cursor:       -1,
+		selectAnchor: -1,
 	}
 
 	lines, _, _ := m.buildTreeLines(80)
