@@ -18,6 +18,10 @@ type KeyMap struct {
 	PageUp   key.Binding
 	PageDown key.Binding
 
+	// Multi-select range extend
+	ExtendDown key.Binding
+	ExtendUp   key.Binding
+
 	// Actions
 	Enter       key.Binding
 	Tab         key.Binding
@@ -105,6 +109,14 @@ func DefaultKeyMap() KeyMap {
 		PageDown: key.NewBinding(
 			key.WithKeys("pgdown", "ctrl+f"),
 			key.WithHelp("PgDn  Ctrl+F", "Page down"),
+		),
+		ExtendDown: key.NewBinding(
+			key.WithKeys("J", "shift+down"),
+			key.WithHelp("J / ⇧↓", "Extend selection down"),
+		),
+		ExtendUp: key.NewBinding(
+			key.WithKeys("K", "shift+up"),
+			key.WithHelp("K / ⇧↑", "Extend selection up"),
 		),
 
 		// Actions

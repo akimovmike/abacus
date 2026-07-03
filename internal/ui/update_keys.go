@@ -116,6 +116,10 @@ func (m *App) handleGlobalKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 			m.textInput.SetCursor(len(m.filterText))
 		}
 	case key.Matches(msg, m.keys.Escape):
+		if m.selectionActive() {
+			m.clearSelection()
+			return m, nil
+		}
 		if m.showErrorToast {
 			m.showErrorToast = false
 			return m, nil
@@ -150,32 +154,42 @@ func (m *App) handleGlobalKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 		if refreshCmd := m.forceRefresh(); refreshCmd != nil {
 			return m, refreshCmd
 		}
+	case key.Matches(msg, m.keys.ExtendDown):
+		return m.handleExtendSelection(1)
+	case key.Matches(msg, m.keys.ExtendUp):
+		return m.handleExtendSelection(-1)
 	case key.Matches(msg, m.keys.Down):
+		m.clearSelection()
 		m.prepareTreeKeyboardNavigation()
 		m.cursor++
 		m.clampCursor()
 		m.updateViewportContent()
 	case key.Matches(msg, m.keys.Up):
+		m.clearSelection()
 		m.prepareTreeKeyboardNavigation()
 		m.cursor--
 		m.clampCursor()
 		m.updateViewportContent()
 	case key.Matches(msg, m.keys.Home):
+		m.clearSelection()
 		m.prepareTreeKeyboardNavigation()
 		m.cursor = 0
 		m.clampCursor()
 		m.updateViewportContent()
 	case key.Matches(msg, m.keys.End):
+		m.clearSelection()
 		m.prepareTreeKeyboardNavigation()
 		m.cursor = len(m.visibleRows) - 1
 		m.clampCursor()
 		m.updateViewportContent()
 	case key.Matches(msg, m.keys.PageDown):
+		m.clearSelection()
 		m.prepareTreeKeyboardNavigation()
 		m.cursor += clampDimension(m.viewport.Height, 1, len(m.visibleRows))
 		m.clampCursor()
 		m.updateViewportContent()
 	case key.Matches(msg, m.keys.PageUp):
+		m.clearSelection()
 		m.prepareTreeKeyboardNavigation()
 		m.cursor -= clampDimension(m.viewport.Height, 1, len(m.visibleRows))
 		m.clampCursor()
@@ -237,6 +251,23 @@ func (m *App) handleGlobalKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 		return m.handleLayoutKey()
 	}
 
+	return m, nil
+}
+
+// handleExtendSelection grows a contiguous selection by moving the cursor by
+// delta rows. The first extend from an idle cursor anchors the range at the
+// current cursor position.
+func (m *App) handleExtendSelection(delta int) (tea.Model, tea.Cmd) {
+	if len(m.visibleRows) == 0 {
+		return m, nil
+	}
+	if !m.selectionActive() {
+		m.selectAnchor = m.cursor
+	}
+	m.prepareTreeKeyboardNavigation()
+	m.cursor += delta
+	m.clampCursor()
+	m.updateViewportContent()
 	return m, nil
 }
 
