@@ -2,6 +2,7 @@ package ui
 
 import (
 	"context"
+	"strings"
 	"time"
 
 	"abacus/internal/config"
@@ -329,18 +330,26 @@ func (m *App) handleBackspaceKey() (tea.Model, tea.Cmd) {
 	return m, nil
 }
 
-// handleCopyKey copies the current bead ID to clipboard.
+// handleCopyKey copies the current bead ID (or the whole selection) to clipboard.
 func (m *App) handleCopyKey() (tea.Model, tea.Cmd) {
-	if len(m.visibleRows) > 0 {
-		id := m.visibleRows[m.cursor].Node.Issue.ID
-		if err := clipboard.WriteAll(id); err == nil {
-			m.copiedBeadID = id
-			m.showCopyToast = true
-			m.copyToastStart = time.Now()
-			return m, scheduleCopyToastTick()
-		}
+	if len(m.visibleRows) == 0 {
+		return m, nil
 	}
-	return m, nil
+	var ids []string
+	if m.selectionActive() {
+		ids = m.selectedIssueIDs()
+	} else {
+		ids = []string{m.visibleRows[m.cursor].Node.Issue.ID}
+	}
+	if err := clipboard.WriteAll(strings.Join(ids, "\n")); err != nil {
+		return m, nil
+	}
+	m.copiedBeadID = ids[0]
+	m.copiedCount = len(ids)
+	m.showCopyToast = true
+	m.copyToastStart = time.Now()
+	m.clearSelection()
+	return m, scheduleCopyToastTick()
 }
 
 // handleToggleColumnsKey opens the columns configuration overlay.

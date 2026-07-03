@@ -189,6 +189,7 @@ type App struct {
 	showCopyToast  bool
 	copyToastStart time.Time
 	copiedBeadID   string
+	copiedCount    int // number of beads copied (>1 => bulk copy)
 
 	// Status toast state
 	statusToastVisible   bool
