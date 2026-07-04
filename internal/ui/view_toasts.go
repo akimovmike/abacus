@@ -60,6 +60,9 @@ func (m *App) copyToastLayer(width, height, mainBodyStart, mainBodyHeight int) L
 
 	// Build content: message + right-aligned countdown
 	msgLine := fmt.Sprintf("Copied '%s' to clipboard.", m.copiedBeadID)
+	if m.copiedCount > 1 {
+		msgLine = fmt.Sprintf("Copied %d beads to clipboard.", m.copiedCount)
+	}
 	countdownStr := fmt.Sprintf("[%ds]", remaining)
 
 	// Calculate toast width based on message

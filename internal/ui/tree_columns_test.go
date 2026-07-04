@@ -11,6 +11,7 @@ import (
 	"abacus/internal/graph"
 
 	"github.com/charmbracelet/lipgloss"
+	"github.com/muesli/termenv"
 )
 
 func makeTestNodeWithComments(count int) *graph.Node {
@@ -333,8 +334,9 @@ func TestBuildTreeLines_RendersConfiguredLabelColumns(t *testing.T) {
 		Labels: []string{"backend"},
 	}}
 	m := App{
-		visibleRows: nodesToRows(withLabel, withoutLabel),
-		cursor:      -1,
+		visibleRows:  nodesToRows(withLabel, withoutLabel),
+		cursor:       -1,
+		selectAnchor: -1,
 	}
 
 	lines, _, _ := m.buildTreeLines(80)
@@ -350,6 +352,43 @@ func TestBuildTreeLines_RendersConfiguredLabelColumns(t *testing.T) {
 	}
 	if strings.Contains(lines[1], "UI") {
 		t.Fatalf("expected second row label column to be blank, got %q", lines[1])
+	}
+}
+
+// TestBuildTreeLines_MultiSelectRowBackground verifies that rows inside an
+// active multi-selection (but not the cursor row) render via
+// buildMultiSelectRow, the cursor row keeps its own (brighter) style even
+// though it falls inside the selection range, and rows outside the range are
+// unaffected.
+func TestBuildTreeLines_MultiSelectRowBackground(t *testing.T) {
+	prevProfile := lipgloss.ColorProfile()
+	lipgloss.SetColorProfile(termenv.TrueColor)
+	defer lipgloss.SetColorProfile(prevProfile)
+
+	rows := rowsFromIDs("ab-1", "ab-2", "ab-3")
+
+	selected := &App{visibleRows: rows, cursor: 1, selectAnchor: 0}
+	lines, _, _ := selected.buildTreeLines(80)
+	if len(lines) != 3 {
+		t.Fatalf("expected 3 tree lines, got %d", len(lines))
+	}
+
+	baseline := &App{visibleRows: rows, cursor: 1, selectAnchor: -1}
+	baselineLines, _, _ := baseline.buildTreeLines(80)
+
+	if lines[0] == baselineLines[0] {
+		t.Fatalf("expected selected non-cursor row to render differently from its unselected baseline")
+	}
+	if !strings.Contains(stripANSI(lines[0]), "ab-1") {
+		t.Fatalf("expected multi-select row to retain id text, got %q", stripANSI(lines[0]))
+	}
+
+	if lines[1] != baselineLines[1] {
+		t.Fatalf("expected cursor row styling unaffected by active selection, got %q vs baseline %q", lines[1], baselineLines[1])
+	}
+
+	if lines[2] != baselineLines[2] {
+		t.Fatalf("expected row outside selection range to render identically to baseline")
 	}
 }
 

@@ -41,6 +41,21 @@ func TestRenderHelpOverlay(t *testing.T) {
 		}
 	})
 
+	t.Run("ContainsExtendSelectionHints", func(t *testing.T) {
+		if !strings.Contains(overlay, keys.ExtendDown.Help().Desc) {
+			t.Errorf("expected overlay to contain ExtendDown desc %q", keys.ExtendDown.Help().Desc)
+		}
+		if !strings.Contains(overlay, keys.ExtendUp.Help().Desc) {
+			t.Errorf("expected overlay to contain ExtendUp desc %q", keys.ExtendUp.Help().Desc)
+		}
+	})
+
+	t.Run("ContainsBulkSelectionNote", func(t *testing.T) {
+		if !strings.Contains(overlay, "c/s/p/L apply to whole selection") {
+			t.Error("expected overlay to contain bulk-selection note")
+		}
+	})
+
 	t.Run("ContainsFooter", func(t *testing.T) {
 		if !strings.Contains(overlay, "Press ? or Esc to close") {
 			t.Error("expected overlay to contain footer instruction")
@@ -86,9 +101,9 @@ func TestGetHelpSections(t *testing.T) {
 		}
 	})
 
-	t.Run("NavigationHas7Rows", func(t *testing.T) {
-		if len(sections[0].rows) != 7 {
-			t.Errorf("Navigation section: expected 7 rows, got %d", len(sections[0].rows))
+	t.Run("NavigationHas9Rows", func(t *testing.T) {
+		if len(sections[0].rows) != 9 {
+			t.Errorf("Navigation section: expected 9 rows, got %d", len(sections[0].rows))
 		}
 	})
 
@@ -119,9 +134,29 @@ func TestGetHelpSections(t *testing.T) {
 		}
 	})
 
-	t.Run("BeadActionsHas9Rows", func(t *testing.T) {
-		if len(sections[2].rows) != 9 {
-			t.Errorf("Bead Actions section: expected 9 rows, got %d", len(sections[2].rows))
+	t.Run("NavigationIncludesExtendDown", func(t *testing.T) {
+		if !helpSectionContains(sections[0], keys.ExtendDown.Help().Key, keys.ExtendDown.Help().Desc) {
+			t.Errorf("Navigation section missing ExtendDown help row %q/%q",
+				keys.ExtendDown.Help().Key, keys.ExtendDown.Help().Desc)
+		}
+	})
+
+	t.Run("NavigationIncludesExtendUp", func(t *testing.T) {
+		if !helpSectionContains(sections[0], keys.ExtendUp.Help().Key, keys.ExtendUp.Help().Desc) {
+			t.Errorf("Navigation section missing ExtendUp help row %q/%q",
+				keys.ExtendUp.Help().Key, keys.ExtendUp.Help().Desc)
+		}
+	})
+
+	t.Run("BeadActionsHas10Rows", func(t *testing.T) {
+		if len(sections[2].rows) != 10 {
+			t.Errorf("Bead Actions section: expected 10 rows, got %d", len(sections[2].rows))
+		}
+	})
+
+	t.Run("BeadActionsIncludesSelectionNote", func(t *testing.T) {
+		if !helpSectionContains(sections[2], "Note", "c/s/p/L apply to whole selection") {
+			t.Error("Bead Actions section missing bulk-selection note row")
 		}
 	})
 

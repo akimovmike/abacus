@@ -63,6 +63,7 @@ func clampDimension(value, minValue, maxValue int) int {
 }
 
 func (m *App) recalcVisibleRows() {
+	m.selectAnchor = -1 // indices shift on refresh/filter/view-mode; drop stale selection
 	m.visibleRows = []graph.TreeRow{}
 	filterLower := strings.ToLower(m.filterText)
 	filterActive := m.isFilterActive()

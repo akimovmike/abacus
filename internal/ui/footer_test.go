@@ -239,6 +239,38 @@ func TestRenderRefreshStatus(t *testing.T) {
 			t.Errorf("expected error to take priority over refreshing, got: %q", status)
 		}
 	})
+
+	t.Run("SelectionActive", func(t *testing.T) {
+		m := &App{selectAnchor: 0, cursor: 2, visibleRows: rowsFromIDs("ab-1", "ab-2", "ab-3")}
+		status := m.renderRefreshStatus()
+		if !strings.Contains(status, "3 selected") {
+			t.Errorf("expected selection count, got: %q", status)
+		}
+	})
+
+	t.Run("SelectionTakesPriorityOverError", func(t *testing.T) {
+		m := &App{
+			selectAnchor: 0,
+			cursor:       1,
+			visibleRows:  rowsFromIDs("ab-1", "ab-2"),
+			lastError:    "some error",
+		}
+		status := m.renderRefreshStatus()
+		if !strings.Contains(status, "2 selected") {
+			t.Errorf("expected selection count to take priority over error, got: %q", status)
+		}
+		if strings.Contains(status, "Error") {
+			t.Errorf("expected error indicator suppressed while selection active, got: %q", status)
+		}
+	})
+
+	t.Run("InactiveSelectionFallsThrough", func(t *testing.T) {
+		m := &App{selectAnchor: -1, lastError: "some error"}
+		status := m.renderRefreshStatus()
+		if !strings.Contains(status, "Error") {
+			t.Errorf("expected error indicator when selection inactive, got: %q", status)
+		}
+	})
 }
 
 func TestRenderHintsWidth(t *testing.T) {

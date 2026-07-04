@@ -155,6 +155,22 @@ func (m *App) buildTreeLines(totalWidth int) ([]string, int, int) {
 			)
 			lines = append(lines, line)
 			cursorEnd = len(lines)
+		} else if m.rowSelected(i) {
+			// Row is part of an active multi-selection (but not the cursor) - full width
+			line := buildMultiSelectRow(
+				indent,
+				marker,
+				iconStr,
+				iconStyle,
+				priorityStr,
+				idDisplay,
+				titleLines[0],
+				textStyle,
+				treeWidth,
+				totalWidth,
+				columns.render(node, columnRenderCrossHighlight),
+			)
+			lines = append(lines, line)
 		} else if isCrossHighlight {
 			// Cross-highlight style for duplicate instances - also full width
 			line := buildCrossHighlightRow(
@@ -380,4 +396,36 @@ func buildCrossHighlightRow(indent, marker, icon string, iconStyle lipgloss.Styl
 		Background(bg).
 		Width(totalWidth).
 		Render(treeContent)
+}
+
+// buildMultiSelectRow creates a full-width row for a bead inside an active
+// multi-selection (but not the cursor row). Uses a dimmer background than the
+// cursor so the cursor stays distinguishable within the selected block.
+//
+// ponytail: reuses BorderNormal() (same bg as cross-highlight) rather than
+// adding a new per-theme color. If the visual clash with cross-highlight
+// matters in practice, add a dedicated theme color then.
+func buildMultiSelectRow(indent, marker, icon string, iconStyle lipgloss.Style, priority, id, title string, textStyle lipgloss.Style, treeWidth, totalWidth int, columns string) string {
+	t := currentThemeWrapper()
+	bg := t.BorderNormal()
+
+	base := lipgloss.NewStyle().Background(bg)
+	prefix := base.Foreground(t.TextMuted())
+	iconS := base.Foreground(iconStyle.GetForeground())
+	priorityS := base.Foreground(t.TextMuted())
+	idS := base.Foreground(t.Accent()).Bold(true)
+	textS := base.Foreground(textStyle.GetForeground())
+
+	treeContent := prefix.Render(fmt.Sprintf(" %s%s ", indent, marker)) +
+		iconS.Render(icon) + base.Render(" ")
+	if priority != "" {
+		treeContent += priorityS.Render(priority) + base.Render(" ")
+	}
+	treeContent += idS.Render(id) + base.Render(" ") + textS.Render(title)
+
+	if columns != "" {
+		treeContent = padToWidth(treeContent, treeWidth, base)
+		treeContent += columns
+	}
+	return lipgloss.NewStyle().Background(bg).Width(totalWidth).Render(treeContent)
 }

@@ -947,6 +947,7 @@ func TestPriorityChangedMsgClearsOverlayAndShowsToast(t *testing.T) {
 		ready:           true,
 		activeOverlay:   OverlayPriority,
 		priorityOverlay: NewPriorityOverlay("ab-200", "T", 2),
+		selectAnchor:    -1,
 	}
 
 	result, cmd := app.Update(PriorityChangedMsg{IssueID: "ab-200", NewPriority: 1})

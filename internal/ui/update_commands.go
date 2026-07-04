@@ -2,6 +2,7 @@ package ui
 
 import (
 	"context"
+	"fmt"
 	"sort"
 	"time"
 
@@ -46,6 +47,19 @@ func (m *App) displayStatusToast(issueID, newStatus string) {
 	m.statusToastBeadID = issueID
 	m.statusToastVisible = true
 	m.statusToastStart = time.Now()
+}
+
+// displayBulkStatusToast shows a success toast for a multi-bead status change.
+func (m *App) displayBulkStatusToast(count int, newStatus string) {
+	m.displayStatusToast(beadCountLabel(count), newStatus)
+}
+
+// beadCountLabel formats a bead count for toast messages ("1 bead", "3 beads").
+func beadCountLabel(count int) string {
+	if count == 1 {
+		return "1 bead"
+	}
+	return fmt.Sprintf("%d beads", count)
 }
 
 // formatStatusLabel converts a status value to a display label.
@@ -326,4 +340,9 @@ func (m *App) displayPriorityToast(issueID string, newPriority int) {
 	m.priorityToastNewPriority = newPriority
 	m.priorityToastVisible = true
 	m.priorityToastStart = time.Now()
+}
+
+// displayBulkPriorityToast shows a success toast for a multi-bead priority change.
+func (m *App) displayBulkPriorityToast(count int, newPriority int) {
+	m.displayPriorityToast(beadCountLabel(count), newPriority)
 }

@@ -2,6 +2,7 @@ package ui
 
 import (
 	"context"
+	"strings"
 	"time"
 
 	"abacus/internal/config"
@@ -116,6 +117,10 @@ func (m *App) handleGlobalKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 			m.textInput.SetCursor(len(m.filterText))
 		}
 	case key.Matches(msg, m.keys.Escape):
+		if m.selectionActive() {
+			m.clearSelection()
+			return m, nil
+		}
 		if m.showErrorToast {
 			m.showErrorToast = false
 			return m, nil
@@ -150,32 +155,42 @@ func (m *App) handleGlobalKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 		if refreshCmd := m.forceRefresh(); refreshCmd != nil {
 			return m, refreshCmd
 		}
+	case key.Matches(msg, m.keys.ExtendDown):
+		return m.handleExtendSelection(1)
+	case key.Matches(msg, m.keys.ExtendUp):
+		return m.handleExtendSelection(-1)
 	case key.Matches(msg, m.keys.Down):
+		m.clearSelection()
 		m.prepareTreeKeyboardNavigation()
 		m.cursor++
 		m.clampCursor()
 		m.updateViewportContent()
 	case key.Matches(msg, m.keys.Up):
+		m.clearSelection()
 		m.prepareTreeKeyboardNavigation()
 		m.cursor--
 		m.clampCursor()
 		m.updateViewportContent()
 	case key.Matches(msg, m.keys.Home):
+		m.clearSelection()
 		m.prepareTreeKeyboardNavigation()
 		m.cursor = 0
 		m.clampCursor()
 		m.updateViewportContent()
 	case key.Matches(msg, m.keys.End):
+		m.clearSelection()
 		m.prepareTreeKeyboardNavigation()
 		m.cursor = len(m.visibleRows) - 1
 		m.clampCursor()
 		m.updateViewportContent()
 	case key.Matches(msg, m.keys.PageDown):
+		m.clearSelection()
 		m.prepareTreeKeyboardNavigation()
 		m.cursor += clampDimension(m.viewport.Height, 1, len(m.visibleRows))
 		m.clampCursor()
 		m.updateViewportContent()
 	case key.Matches(msg, m.keys.PageUp):
+		m.clearSelection()
 		m.prepareTreeKeyboardNavigation()
 		m.cursor -= clampDimension(m.viewport.Height, 1, len(m.visibleRows))
 		m.clampCursor()
@@ -240,6 +255,23 @@ func (m *App) handleGlobalKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 	return m, nil
 }
 
+// handleExtendSelection grows a contiguous selection by moving the cursor by
+// delta rows. The first extend from an idle cursor anchors the range at the
+// current cursor position.
+func (m *App) handleExtendSelection(delta int) (tea.Model, tea.Cmd) {
+	if len(m.visibleRows) == 0 {
+		return m, nil
+	}
+	if !m.selectionActive() {
+		m.selectAnchor = m.cursor
+	}
+	m.prepareTreeKeyboardNavigation()
+	m.cursor += delta
+	m.clampCursor()
+	m.updateViewportContent()
+	return m, nil
+}
+
 // handleTreeExpand toggles expansion of the current tree node.
 func (m *App) handleTreeExpand() (tea.Model, tea.Cmd) {
 	if len(m.visibleRows) == 0 {
@@ -298,18 +330,26 @@ func (m *App) handleBackspaceKey() (tea.Model, tea.Cmd) {
 	return m, nil
 }
 
-// handleCopyKey copies the current bead ID to clipboard.
+// handleCopyKey copies the current bead ID (or the whole selection) to clipboard.
 func (m *App) handleCopyKey() (tea.Model, tea.Cmd) {
-	if len(m.visibleRows) > 0 {
-		id := m.visibleRows[m.cursor].Node.Issue.ID
-		if err := clipboard.WriteAll(id); err == nil {
-			m.copiedBeadID = id
-			m.showCopyToast = true
-			m.copyToastStart = time.Now()
-			return m, scheduleCopyToastTick()
-		}
+	if len(m.visibleRows) == 0 {
+		return m, nil
 	}
-	return m, nil
+	var ids []string
+	if m.selectionActive() {
+		ids = m.selectedIssueIDs()
+	} else {
+		ids = []string{m.visibleRows[m.cursor].Node.Issue.ID}
+	}
+	if err := clipboard.WriteAll(strings.Join(ids, "\n")); err != nil {
+		return m, nil
+	}
+	m.copiedBeadID = ids[0]
+	m.copiedCount = len(ids)
+	m.showCopyToast = true
+	m.copyToastStart = time.Now()
+	m.clearSelection()
+	return m, scheduleCopyToastTick()
 }
 
 // handleToggleColumnsKey opens the columns configuration overlay.

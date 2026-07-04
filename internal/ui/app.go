@@ -114,9 +114,14 @@ const (
 
 // App implements the Bubble Tea model for Abacus.
 type App struct {
-	roots             []*graph.Node
-	visibleRows       []graph.TreeRow
-	cursor            int
+	roots       []*graph.Node
+	visibleRows []graph.TreeRow
+	cursor      int
+	// selectAnchor marks where a contiguous multi-selection began (index into
+	// visibleRows). -1 means no active selection. The selection is the inclusive
+	// range between selectAnchor and cursor. Cleared on plain navigation, Esc,
+	// and any recalcVisibleRows (refresh/filter/view-mode shift indices).
+	selectAnchor      int
 	treeTopLine       int
 	treeMouseScrolled bool
 	repoName          string
@@ -184,6 +189,7 @@ type App struct {
 	showCopyToast  bool
 	copyToastStart time.Time
 	copiedBeadID   string
+	copiedCount    int // number of beads copied (>1 => bulk copy)
 
 	// Status toast state
 	statusToastVisible   bool
@@ -345,6 +351,7 @@ func NewApp(cfg Config) (*App, error) {
 
 	app := &App{
 		roots:           roots,
+		selectAnchor:    -1,
 		textInput:       ti,
 		repoName:        repo,
 		focus:           FocusTree,

@@ -424,6 +424,7 @@ func TestRefreshErrorToastOnlyAfterPersistentFailures(t *testing.T) {
 
 func TestErrorToastEscDismisses(t *testing.T) {
 	app := &App{
+		selectAnchor:   -1,
 		lastError:      "test error",
 		showErrorToast: true,
 		errorShownOnce: true,

@@ -26,6 +26,13 @@ func (m *App) handleOverlayMsg(msg tea.Msg) (tea.Model, tea.Cmd, bool) {
 		}
 		m.statusOverlay = nil
 		if msg.NewStatus != "" {
+			if m.selectionActive() {
+				cmds := m.bulkStatusCmds(msg.NewStatus)
+				m.displayBulkStatusToast(len(cmds), msg.NewStatus)
+				m.clearSelection()
+				cmds = append(cmds, scheduleStatusToastTick())
+				return m, tea.Batch(cmds...), true
+			}
 			m.displayStatusToast(msg.IssueID, msg.NewStatus)
 			if oldStatus == "closed" && msg.NewStatus == "open" {
 				return m, tea.Batch(m.executeReopenCmd(msg.IssueID), scheduleStatusToastTick()), true
@@ -63,6 +70,13 @@ func (m *App) handleOverlayMsg(msg tea.Msg) (tea.Model, tea.Cmd, bool) {
 		m.activeOverlay = OverlayNone
 		m.labelsOverlay = nil
 		if len(msg.Added) > 0 || len(msg.Removed) > 0 {
+			if m.selectionActive() {
+				cmds := m.bulkLabelsCmds(msg)
+				m.displayLabelsToast(fmt.Sprintf("%d beads", len(cmds)), msg.Added, msg.Removed)
+				m.clearSelection()
+				cmds = append(cmds, scheduleLabelsToastTick())
+				return m, tea.Batch(cmds...), true
+			}
 			m.displayLabelsToast(msg.IssueID, msg.Added, msg.Removed)
 			return m, tea.Batch(m.executeLabelsUpdate(msg), scheduleLabelsToastTick()), true
 		}
@@ -300,6 +314,13 @@ func (m *App) handleOverlayMsg(msg tea.Msg) (tea.Model, tea.Cmd, bool) {
 	case PriorityChangedMsg:
 		m.activeOverlay = OverlayNone
 		m.priorityOverlay = nil
+		if m.selectionActive() {
+			cmds := m.bulkPriorityCmds(msg.NewPriority)
+			m.displayBulkPriorityToast(len(cmds), msg.NewPriority)
+			m.clearSelection()
+			cmds = append(cmds, schedulePriorityToastTick())
+			return m, tea.Batch(cmds...), true
+		}
 		m.displayPriorityToast(msg.IssueID, msg.NewPriority)
 		return m, tea.Batch(m.executePriorityChangeCmd(msg.IssueID, msg.NewPriority), schedulePriorityToastTick()), true
 
