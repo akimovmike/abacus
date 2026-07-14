@@ -38,6 +38,18 @@ func buildTreeTestApp(nodes ...*graph.Node) *App {
 	return m
 }
 
+// renderAllTreeLines styles every visible row (unwindowed) for tests that need
+// to inspect per-row output. Production renderTreeView windows to the viewport
+// (ab-228x), so it is not usable for whole-list assertions.
+func renderAllTreeLines(m *App, totalWidth int) []string {
+	r := m.newTreeRowRenderer(totalWidth)
+	lines := make([]string, 0, len(m.visibleRows))
+	for i := range m.visibleRows {
+		lines = append(lines, r.renderRow(i))
+	}
+	return lines
+}
+
 func buildWrappedTreeApp(count int) *App {
 	nodes := make([]*graph.Node, count)
 	for i := 0; i < count; i++ {

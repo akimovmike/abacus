@@ -74,7 +74,7 @@ func TestBuildTreeLines_TruncatesWhenColumnsEnabled(t *testing.T) {
 		cursor:      -1,
 	}
 
-	lines, _, _ := m.buildTreeLines(80)
+	lines := renderAllTreeLines(&m, 80)
 	if len(lines) != 1 {
 		t.Fatalf("expected single line when columns enabled, got %d", len(lines))
 	}
@@ -89,7 +89,7 @@ func TestBuildTreeLines_TruncatesWhenColumnsEnabled(t *testing.T) {
 	}
 
 	setColumnConfig(t, false, true, true)
-	noColLines, _, _ := m.buildTreeLines(30)
+	noColLines := renderAllTreeLines(&m, 30)
 	if len(noColLines) != 1 {
 		t.Fatalf("expected single line when columns disabled, got %d", len(noColLines))
 	}
@@ -127,7 +127,7 @@ func TestBuildTreeLines_RendersCommentColumn(t *testing.T) {
 		cursor:      -1,
 	}
 
-	lines, _, _ := m.buildTreeLines(80)
+	lines := renderAllTreeLines(&m, 80)
 	if len(lines) != 1 {
 		t.Fatalf("expected single line output, got %d", len(lines))
 	}
@@ -147,7 +147,7 @@ func TestBuildTreeLines_HidesColumnsWhenTooNarrow(t *testing.T) {
 		cursor:      -1,
 	}
 
-	lines, _, _ := m.buildTreeLines(minTreeWidth)
+	lines := renderAllTreeLines(&m, minTreeWidth)
 	if len(lines) != 1 {
 		t.Fatalf("expected single line output, got %d", len(lines))
 	}

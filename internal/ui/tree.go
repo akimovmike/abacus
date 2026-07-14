@@ -12,6 +12,15 @@ import (
 
 const treeScrollMargin = 1
 
+// treeRowRenderCount counts individual tree rows styled since the last reset.
+// Incremented by renderRow (prod); read only by tests, which assert
+// renderTreeView styles the visible viewport rather than every row (guards the
+// large-project scroll perf fix, ab-228x). Lint runs with tests:false, so the
+// test-only reads are invisible to it.
+//
+//nolint:unused
+var treeRowRenderCount int
+
 // renderTreeView renders the tree list. Theme is managed by the caller (view.go)
 // which sets dimmed theme when an overlay is active.
 func (m *App) renderTreeView() string {
@@ -31,10 +40,13 @@ func (m *App) renderTreeView() string {
 	}
 	totalWidth = clampDimension(totalWidth, minTreeWidth, m.width-2)
 
-	lines, cursorStart, cursorEnd := m.buildTreeLines(totalWidth)
-	totalLines := len(lines)
-	if totalLines == 0 {
-		return ""
+	// Each visible row renders to exactly one line, so the viewport window can
+	// be computed from counts alone. We then style ONLY the windowed rows,
+	// keeping a scroll keystroke O(viewport) instead of O(total rows) (ab-228x).
+	totalLines := len(m.visibleRows)
+	cursorStart, cursorEnd := -1, -1
+	if m.cursor >= 0 && m.cursor < totalLines {
+		cursorStart, cursorEnd = m.cursor, m.cursor+1
 	}
 
 	if m.treeMouseScrolled {
@@ -58,7 +70,11 @@ func (m *App) renderTreeView() string {
 		end = totalLines
 	}
 
-	visible := append([]string{}, lines[start:end]...)
+	r := m.newTreeRowRenderer(totalWidth)
+	visible := make([]string, 0, listHeight)
+	for i := start; i < end; i++ {
+		visible = append(visible, r.renderRow(i))
+	}
 	for len(visible) < listHeight {
 		visible = append(visible, "")
 	}
@@ -66,144 +82,124 @@ func (m *App) renderTreeView() string {
 	return strings.Join(visible, "\n")
 }
 
-func (m *App) buildTreeLines(totalWidth int) ([]string, int, int) {
-	lines := make([]string, 0, len(m.visibleRows))
-	cursorStart, cursorEnd := -1, -1
-	columns, treeWidth := prepareColumnState(totalWidth)
-	showColumns := columns.enabled()
-	showPriority := config.GetBool(config.KeyTreeShowPriority)
+// treeRowRenderer holds the shared state for one View pass so an individual row
+// can be styled on demand. This lets renderTreeView style only the rows inside
+// the viewport window instead of every visible row (ab-228x).
+type treeRowRenderer struct {
+	m            *App
+	totalWidth   int
+	treeWidth    int
+	columns      columnState
+	showColumns  bool
+	showPriority bool
+	selectedID   string
+}
 
-	// Track which nodes are selected for cross-highlighting
+func (m *App) newTreeRowRenderer(totalWidth int) treeRowRenderer {
+	columns, treeWidth := prepareColumnState(totalWidth)
+	// Track which node is selected for cross-highlighting duplicate instances.
 	var selectedID string
 	if m.cursor >= 0 && m.cursor < len(m.visibleRows) {
 		selectedID = m.visibleRows[m.cursor].Node.Issue.ID
 	}
+	return treeRowRenderer{
+		m:            m,
+		totalWidth:   totalWidth,
+		treeWidth:    treeWidth,
+		columns:      columns,
+		showColumns:  columns.enabled(),
+		showPriority: config.GetBool(config.KeyTreeShowPriority),
+		selectedID:   selectedID,
+	}
+}
 
-	for i, row := range m.visibleRows {
-		node := row.Node
-		indent := strings.Repeat("  ", row.Depth)
-		marker := " •"
-		if len(node.Children) > 0 {
-			if m.isNodeExpandedInView(row) {
-				marker = " ▼"
-			} else {
-				marker = " ▶"
-			}
-		}
-
-		iconStr, iconStyle, textStyle := "○", styleNormalText(), styleNormalText()
-		domainIssue, err := domain.NewIssueFromFull(node.Issue, node.IsBlocked)
-		status := node.Issue.Status
-		if err == nil {
-			status = string(domainIssue.Status())
-		}
-		switch status {
-		case "in_progress":
-			iconStr, iconStyle, textStyle = "◐", styleIconInProgress(), styleInProgressText()
-		case "closed":
-			iconStr, iconStyle, textStyle = "✔", styleIconDone(), styleDoneText()
-		case "blocked":
-			// Explicit blocked status - same visual as dependency-blocked
-			iconStr, iconStyle, textStyle = "⛔", styleIconBlocked(), styleBlockedText()
-		case "deferred":
-			// Deferred (on ice) - snowflake icon with muted styling
-			iconStr, iconStyle, textStyle = "❄", styleIconDeferred(), styleDeferredText()
-		default:
-			// Open status - check if blocked by dependencies
-			if node.IsBlocked {
-				iconStr, iconStyle, textStyle = "⛔", styleIconBlocked(), styleBlockedText()
-			}
-		}
-
-		// Add * indicator for multi-parent items
-		idDisplay := node.Issue.ID
-		if row.HasMultipleParents() {
-			idDisplay = node.Issue.ID + "*"
-		}
-
-		// Format priority (e.g., "P2") or empty string if not shown
-		priorityStr := formatPriority(node.Issue.Priority, showPriority)
-
-		totalPrefixWidth := treePrefixWidth(indent, marker, iconStr, priorityStr, idDisplay)
-		availableWidth := treeWidth - totalPrefixWidth
-		if availableWidth < 1 {
-			availableWidth = 1
-		}
-		titleLines := []string{truncateWithEllipsis(node.Issue.Title, availableWidth)}
-
-		// Cross-highlighting: same node appears under multiple parents
-		isCrossHighlight := i != m.cursor && node.Issue.ID == selectedID
-
-		// Style for spacing/separators to maintain background
-		sp := styleNormalText().Render(" ")
-
-		if i == m.cursor {
-			cursorStart = len(lines)
-			// Build full-width selected row
-			line := buildSelectedRow(
-				indent,
-				marker,
-				iconStr,
-				iconStyle,
-				priorityStr,
-				idDisplay,
-				titleLines[0],
-				textStyle,
-				treeWidth,
-				totalWidth,
-				columns.render(node, columnRenderSelected),
-			)
-			lines = append(lines, line)
-			cursorEnd = len(lines)
-		} else if m.rowSelected(i) {
-			// Row is part of an active multi-selection (but not the cursor) - full width
-			line := buildMultiSelectRow(
-				indent,
-				marker,
-				iconStr,
-				iconStyle,
-				priorityStr,
-				idDisplay,
-				titleLines[0],
-				textStyle,
-				treeWidth,
-				totalWidth,
-				columns.render(node, columnRenderCrossHighlight),
-			)
-			lines = append(lines, line)
-		} else if isCrossHighlight {
-			// Cross-highlight style for duplicate instances - also full width
-			line := buildCrossHighlightRow(
-				indent,
-				marker,
-				iconStr,
-				iconStyle,
-				priorityStr,
-				idDisplay,
-				titleLines[0],
-				textStyle,
-				treeWidth,
-				totalWidth,
-				columns.render(node, columnRenderCrossHighlight),
-			)
-			lines = append(lines, line)
+// renderRow styles the visible row at index i into a single line.
+func (r treeRowRenderer) renderRow(i int) string {
+	treeRowRenderCount++
+	m := r.m
+	row := m.visibleRows[i]
+	node := row.Node
+	indent := strings.Repeat("  ", row.Depth)
+	marker := " •"
+	if len(node.Children) > 0 {
+		if m.isNodeExpandedInView(row) {
+			marker = " ▼"
 		} else {
-			// Style the indent and all spacing with background
-			styledIndent := styleNormalText().Render(" " + indent)
-			line1 := styledIndent + iconStyle.Render(marker) + sp + iconStyle.Render(iconStr) + sp
-			if priorityStr != "" {
-				line1 += stylePriority().Render(priorityStr) + sp
-			}
-			line1 += styleID().Render(idDisplay) + sp + textStyle.Render(titleLines[0])
-			if showColumns {
-				// Pad tree content to treeWidth so columns align vertically
-				line1 = padToWidth(line1, treeWidth, styleNormalText())
-				line1 += columns.render(node, columnRenderNormal)
-			}
-			lines = append(lines, line1)
+			marker = " ▶"
 		}
 	}
-	return lines, cursorStart, cursorEnd
+
+	iconStr, iconStyle, textStyle := "○", styleNormalText(), styleNormalText()
+	domainIssue, err := domain.NewIssueFromFull(node.Issue, node.IsBlocked)
+	status := node.Issue.Status
+	if err == nil {
+		status = string(domainIssue.Status())
+	}
+	switch status {
+	case "in_progress":
+		iconStr, iconStyle, textStyle = "◐", styleIconInProgress(), styleInProgressText()
+	case "closed":
+		iconStr, iconStyle, textStyle = "✔", styleIconDone(), styleDoneText()
+	case "blocked":
+		// Explicit blocked status - same visual as dependency-blocked
+		iconStr, iconStyle, textStyle = "⛔", styleIconBlocked(), styleBlockedText()
+	case "deferred":
+		// Deferred (on ice) - snowflake icon with muted styling
+		iconStr, iconStyle, textStyle = "❄", styleIconDeferred(), styleDeferredText()
+	default:
+		// Open status - check if blocked by dependencies
+		if node.IsBlocked {
+			iconStr, iconStyle, textStyle = "⛔", styleIconBlocked(), styleBlockedText()
+		}
+	}
+
+	// Add * indicator for multi-parent items
+	idDisplay := node.Issue.ID
+	if row.HasMultipleParents() {
+		idDisplay = node.Issue.ID + "*"
+	}
+
+	// Format priority (e.g., "P2") or empty string if not shown
+	priorityStr := formatPriority(node.Issue.Priority, r.showPriority)
+
+	totalPrefixWidth := treePrefixWidth(indent, marker, iconStr, priorityStr, idDisplay)
+	availableWidth := r.treeWidth - totalPrefixWidth
+	if availableWidth < 1 {
+		availableWidth = 1
+	}
+	title := truncateWithEllipsis(node.Issue.Title, availableWidth)
+
+	// Cross-highlighting: same node appears under multiple parents
+	isCrossHighlight := i != m.cursor && node.Issue.ID == r.selectedID
+
+	switch {
+	case i == m.cursor:
+		return buildSelectedRow(indent, marker, iconStr, iconStyle, priorityStr, idDisplay,
+			title, textStyle, r.treeWidth, r.totalWidth, r.columns.render(node, columnRenderSelected))
+	case m.rowSelected(i):
+		// Row is part of an active multi-selection (but not the cursor)
+		return buildMultiSelectRow(indent, marker, iconStr, iconStyle, priorityStr, idDisplay,
+			title, textStyle, r.treeWidth, r.totalWidth, r.columns.render(node, columnRenderCrossHighlight))
+	case isCrossHighlight:
+		// Cross-highlight style for duplicate instances
+		return buildCrossHighlightRow(indent, marker, iconStr, iconStyle, priorityStr, idDisplay,
+			title, textStyle, r.treeWidth, r.totalWidth, r.columns.render(node, columnRenderCrossHighlight))
+	default:
+		// Style the indent and all spacing with background
+		sp := styleNormalText().Render(" ")
+		styledIndent := styleNormalText().Render(" " + indent)
+		line := styledIndent + iconStyle.Render(marker) + sp + iconStyle.Render(iconStr) + sp
+		if priorityStr != "" {
+			line += stylePriority().Render(priorityStr) + sp
+		}
+		line += styleID().Render(idDisplay) + sp + textStyle.Render(title)
+		if r.showColumns {
+			// Pad tree content to treeWidth so columns align vertically
+			line = padToWidth(line, r.treeWidth, styleNormalText())
+			line += r.columns.render(node, columnRenderNormal)
+		}
+		return line
+	}
 }
 
 func (m *App) ensureTreeSelectionVisible(listHeight, totalLines, cursorStart, cursorEnd int) {

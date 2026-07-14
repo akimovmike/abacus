@@ -339,7 +339,7 @@ func TestBuildTreeLines_RendersConfiguredLabelColumns(t *testing.T) {
 		selectAnchor: -1,
 	}
 
-	lines, _, _ := m.buildTreeLines(80)
+	lines := renderAllTreeLines(&m, 80)
 	if len(lines) != 2 {
 		t.Fatalf("expected two tree lines, got %d", len(lines))
 	}
@@ -368,13 +368,13 @@ func TestBuildTreeLines_MultiSelectRowBackground(t *testing.T) {
 	rows := rowsFromIDs("ab-1", "ab-2", "ab-3")
 
 	selected := &App{visibleRows: rows, cursor: 1, selectAnchor: 0}
-	lines, _, _ := selected.buildTreeLines(80)
+	lines := renderAllTreeLines(selected, 80)
 	if len(lines) != 3 {
 		t.Fatalf("expected 3 tree lines, got %d", len(lines))
 	}
 
 	baseline := &App{visibleRows: rows, cursor: 1, selectAnchor: -1}
-	baselineLines, _, _ := baseline.buildTreeLines(80)
+	baselineLines := renderAllTreeLines(baseline, 80)
 
 	if lines[0] == baselineLines[0] {
 		t.Fatalf("expected selected non-cursor row to render differently from its unselected baseline")
@@ -409,5 +409,30 @@ func TestConfiguredLabelColumnsDefaultToEnabledAndLastSegmentName(t *testing.T) 
 	}
 	if cols[0].DisplayName != "redesign" {
 		t.Fatalf("expected default display name redesign, got %q", cols[0].DisplayName)
+	}
+}
+
+// TestRenderTreeViewOnlyStylesViewport guards the scroll perf fix (ab-228x):
+// renderTreeView must style ~viewport-many rows, not every row, so scrolling a
+// large project stays O(viewport) per keystroke rather than O(total rows).
+func TestRenderTreeViewOnlyStylesViewport(t *testing.T) {
+	const total = 1000
+	nodes := make([]*graph.Node, total)
+	for i := range nodes {
+		nodes[i] = &graph.Node{Issue: beads.FullIssue{
+			ID:     "ab-" + strconv.Itoa(i),
+			Title:  "row",
+			Status: "open",
+		}}
+	}
+	m := buildTreeTestApp(nodes...)
+	m.cursor = total / 2
+
+	treeRowRenderCount = 0
+	m.renderTreeView()
+
+	if limit := 3 * m.treePaneHeight(); treeRowRenderCount > limit {
+		t.Fatalf("renderTreeView styled %d rows for a %d-line pane over %d total rows; expected <= %d (viewport-bounded)",
+			treeRowRenderCount, m.treePaneHeight(), total, limit)
 	}
 }
