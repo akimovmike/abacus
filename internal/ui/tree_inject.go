@@ -46,6 +46,14 @@ func (m *App) fastInjectBead(issue beads.FullIssue, parentHint string) error {
 	// 4. Propagate state changes up the tree
 	propagateStateChanges(newNode)
 
+	// 4b. Non-default sorts: the incremental insert placed the node by the
+	// default status order, so re-sort the tree under the active spec before
+	// recalculating rows (else the new bead sits in the wrong slot until the
+	// next full refresh).
+	if m.sortSpec.Key != graph.SortDefault {
+		graph.ApplySort(m.roots, m.sortSpec)
+	}
+
 	// 5. Recalculate visible rows (incremental traversal)
 	m.recalcVisibleRows()
 

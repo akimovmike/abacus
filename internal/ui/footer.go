@@ -75,6 +75,12 @@ var createOverlayFooterHints = []footerHint{
 	{"esc", "Cancel"},
 }
 
+var sortOverlayFooterHints = []footerHint{
+	{"↑↓", "Move"},
+	{"⏎", "Apply"},
+	{"esc", "Cancel"},
+}
+
 // renderFooter renders the footer bar with pill-style key hints.
 func (m *App) renderFooter() string {
 	var hints []footerHint
@@ -93,6 +99,8 @@ func (m *App) renderFooter() string {
 		}
 	case OverlayCreate:
 		hints = createOverlayFooterHints
+	case OverlaySort:
+		hints = sortOverlayFooterHints
 	default:
 		// Context-specific keys (shown first, leftmost)
 		switch m.focus {

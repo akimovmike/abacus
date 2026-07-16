@@ -62,6 +62,9 @@ type KeyMap struct {
 	// Filter
 	Filter key.Binding
 
+	// Sort
+	Sort key.Binding
+
 	// Update
 	Update key.Binding
 
@@ -234,6 +237,11 @@ func DefaultKeyMap() KeyMap {
 		Filter: key.NewBinding(
 			key.WithKeys("f"),
 			key.WithHelp("f", "Filter label/assignee"),
+		),
+
+		Sort: key.NewBinding(
+			key.WithKeys("S"),
+			key.WithHelp("S", "Sort tree"),
 		),
 
 		// Update

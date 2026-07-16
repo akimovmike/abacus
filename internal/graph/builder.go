@@ -9,15 +9,24 @@ import (
 )
 
 // Builder constructs dependency graphs from raw Beads issues.
-type Builder struct{}
+type Builder struct {
+	sort SortSpec
+}
 
 // NewBuilder creates a new Builder instance.
 func NewBuilder() *Builder {
 	return &Builder{}
 }
 
+// WithSort sets the sort order applied to the forest at the end of Build.
+// The zero-value spec (SortDefault) preserves the legacy status cascade.
+func (b *Builder) WithSort(spec SortSpec) *Builder {
+	b.sort = spec
+	return b
+}
+
 // Build converts raw issues into a rooted dependency forest with computed states.
-func (Builder) Build(issues []beads.FullIssue) ([]*Node, error) {
+func (b *Builder) Build(issues []beads.FullIssue) ([]*Node, error) {
 	if len(issues) == 0 {
 		return []*Node{}, nil
 	}
@@ -163,9 +172,8 @@ func (Builder) Build(issues []beads.FullIssue) ([]*Node, error) {
 		if root.HasInProgress {
 			root.Expanded = true
 		}
-		computeSortMetrics(root)
 	}
-	sortNodes(roots)
+	ApplySort(roots, b.sort)
 
 	return roots, nil
 }

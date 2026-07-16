@@ -7,6 +7,7 @@ import (
 	"testing"
 
 	"abacus/internal/beads"
+	"abacus/internal/graph"
 )
 
 func TestLoadDataUsesExport(t *testing.T) {
@@ -23,7 +24,7 @@ func TestLoadDataUsesExport(t *testing.T) {
 		}, nil
 	}
 
-	roots, err := loadData(context.Background(), mock, nil)
+	roots, err := loadData(context.Background(), mock, nil, graph.SortSpec{})
 	if err != nil {
 		t.Fatalf("loadData returned error: %v", err)
 	}
@@ -51,7 +52,7 @@ func TestLoadDataDoesNotPreloadComments(t *testing.T) {
 		}, nil
 	}
 
-	roots, err := loadData(context.Background(), mock, nil)
+	roots, err := loadData(context.Background(), mock, nil, graph.SortSpec{})
 	if err != nil {
 		t.Fatalf("loadData returned error: %v", err)
 	}
@@ -69,7 +70,7 @@ func TestLoadDataReturnsErrorWhenNoIssues(t *testing.T) {
 	mock.ExportFn = func(ctx context.Context) ([]beads.FullIssue, error) {
 		return nil, fmt.Errorf("bd export returned no issues")
 	}
-	if _, err := loadData(context.Background(), mock, nil); err == nil {
+	if _, err := loadData(context.Background(), mock, nil, graph.SortSpec{}); err == nil {
 		t.Fatal("expected error, got nil")
 	}
 }
@@ -79,7 +80,7 @@ func TestLoadDataReturnsErrNoIssuesForEmptyExport(t *testing.T) {
 	mock.ExportFn = func(ctx context.Context) ([]beads.FullIssue, error) {
 		return []beads.FullIssue{}, nil
 	}
-	roots, err := loadData(context.Background(), mock, nil)
+	roots, err := loadData(context.Background(), mock, nil, graph.SortSpec{})
 	if !errors.Is(err, ErrNoIssues) {
 		t.Fatalf("expected ErrNoIssues, got %v", err)
 	}
@@ -100,7 +101,7 @@ func TestLoadDataReportsStartupStages(t *testing.T) {
 	}
 
 	reporter := &recordingReporter{}
-	if _, err := loadData(context.Background(), mock, reporter); err != nil {
+	if _, err := loadData(context.Background(), mock, reporter, graph.SortSpec{}); err != nil {
 		t.Fatalf("loadData returned error: %v", err)
 	}
 

@@ -45,6 +45,7 @@ const (
 	OverlayColumns
 	OverlayLabelColors
 	OverlayFilter
+	OverlaySort
 )
 
 // Layout describes how the tree and detail panes are arranged.
@@ -135,9 +136,10 @@ type App struct {
 	textInput      textinput.Model
 	searching      bool
 	filterText     string
-	labelFilter    string   // exact label to filter the tree by; "" = inactive
-	assigneeFilter string   // exact assignee to filter the tree by; "" = inactive
-	viewMode       ViewMode // Current view filter mode (see viewModeDefs)
+	labelFilter    string         // exact label to filter the tree by; "" = inactive
+	assigneeFilter string         // exact assignee to filter the tree by; "" = inactive
+	viewMode       ViewMode       // Current view filter mode (see viewModeDefs)
+	sortSpec       graph.SortSpec // Current tree sort order (persisted per-project)
 	// filterCollapsed tracks nodes explicitly collapsed while a search filter is active.
 	filterCollapsed map[string]bool
 	// filterForcedExpanded tracks nodes temporarily expanded to surface filter matches.
@@ -212,6 +214,7 @@ type App struct {
 	columnsOverlay     *ColumnsOverlay
 	labelColorsOverlay *LabelColorsOverlay
 	filterOverlay      *FilterOverlay
+	sortOverlay        *SortOverlay
 
 	// Labels toast state
 	labelsToastVisible bool
@@ -322,7 +325,14 @@ func NewApp(cfg Config) (*App, error) {
 		}
 	}
 
-	roots, err := loadData(context.Background(), client, reporter)
+	// Seed the persisted per-project sort order before the first build so the
+	// initial tree already reflects the user's chosen order.
+	sortSpec, ok := graph.ParseSortSpec(config.LoadSort())
+	if !ok {
+		sortSpec = graph.SortSpec{} // unset/invalid -> Default
+	}
+
+	roots, err := loadData(context.Background(), client, reporter, sortSpec)
 	if err != nil && !errors.Is(err, ErrNoIssues) {
 		return nil, err
 	}
@@ -351,6 +361,7 @@ func NewApp(cfg Config) (*App, error) {
 
 	app := &App{
 		roots:           roots,
+		sortSpec:        sortSpec,
 		selectAnchor:    -1,
 		textInput:       ti,
 		repoName:        repo,
