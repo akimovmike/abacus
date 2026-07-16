@@ -103,6 +103,11 @@ func (m *App) delegateToOverlay(msg tea.KeyMsg) (tea.Cmd, bool) {
 		return cmd, true
 	}
 
+	if m.activeOverlay == OverlaySort && m.sortOverlay != nil {
+		m.sortOverlay, cmd = m.sortOverlay.Update(msg)
+		return cmd, true
+	}
+
 	return nil, false
 }
 
@@ -223,6 +228,8 @@ func (m *App) handleGlobalKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 		return m.handleLabelColorsKey()
 	case key.Matches(msg, m.keys.Filter):
 		return m.handleFilterKey()
+	case key.Matches(msg, m.keys.Sort):
+		return m.handleSortKey()
 	case key.Matches(msg, m.keys.Error):
 		if m.lastError != "" && !m.showErrorToast {
 			m.showErrorToast = true
@@ -371,6 +378,14 @@ func (m *App) handleLabelColorsKey() (tea.Model, tea.Cmd) {
 func (m *App) handleFilterKey() (tea.Model, tea.Cmd) {
 	m.filterOverlay = NewFilterOverlay(m.getAllLabels(), m.getAllAssignees(), m.labelFilter, m.assigneeFilter)
 	m.activeOverlay = OverlayFilter
+	return m, nil
+}
+
+// handleSortKey opens the sort-order picker. Sort is global (not per-bead), so
+// it seeds the overlay with the current spec rather than a selected row.
+func (m *App) handleSortKey() (tea.Model, tea.Cmd) {
+	m.sortOverlay = NewSortOverlay(m.sortSpec)
+	m.activeOverlay = OverlaySort
 	return m, nil
 }
 

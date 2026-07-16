@@ -173,7 +173,7 @@ func preloadAllComments(ctx context.Context, client beads.Client, roots []*graph
 	wg.Wait()
 }
 
-func loadData(ctx context.Context, client beads.Client, reporter StartupReporter) ([]*graph.Node, error) {
+func loadData(ctx context.Context, client beads.Client, reporter StartupReporter, sortSpec graph.SortSpec) ([]*graph.Node, error) {
 	if reporter != nil {
 		reporter.Stage(StartupStageLoadingIssues, "Loading issues...")
 	}
@@ -198,28 +198,31 @@ func loadData(ctx context.Context, client beads.Client, reporter StartupReporter
 		reporter.Stage(StartupStageBuildingGraph, "Building dependency graph...")
 	}
 
-	roots, err := graph.NewBuilder().Build(issues)
+	roots, err := graph.NewBuilder().WithSort(sortSpec).Build(issues)
 	if err != nil {
 		return nil, err
 	}
 	markExportedCommentsLoaded(roots)
-	// Roots are already sorted by graph.Builder using SortPriority/SortTimestamp.
-	// Apply additional ranking to bubble up HasInProgress and HasReady roots.
-	sort.SliceStable(roots, func(i, j int) bool {
-		a, b := roots[i], roots[j]
-		rankA, rankB := 2, 2
-		if a.HasInProgress {
-			rankA = 0
-		} else if a.HasReady {
-			rankA = 1
-		}
-		if b.HasInProgress {
-			rankB = 0
-		} else if b.HasReady {
-			rankB = 1
-		}
-		return rankA < rankB
-	})
+	// In Default sort the roots are status-cascaded by graph.Builder; apply the
+	// extra HasInProgress/HasReady bubble-up. Custom sorts fully own the order,
+	// so this ranking is skipped for them.
+	if sortSpec.Key == graph.SortDefault {
+		sort.SliceStable(roots, func(i, j int) bool {
+			a, b := roots[i], roots[j]
+			rankA, rankB := 2, 2
+			if a.HasInProgress {
+				rankA = 0
+			} else if a.HasReady {
+				rankA = 1
+			}
+			if b.HasInProgress {
+				rankB = 0
+			} else if b.HasReady {
+				rankB = 1
+			}
+			return rankA < rankB
+		})
+	}
 	// Comments are loaded in background after TUI starts (ab-fkyz, ab-o0fm)
 	return roots, nil
 }

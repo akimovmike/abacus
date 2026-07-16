@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"strings"
 
+	"abacus/internal/graph"
 	"abacus/internal/ui/theme"
 
 	"github.com/charmbracelet/lipgloss"
@@ -52,6 +53,11 @@ func (m *App) View() string {
 	if m.viewMode != ViewModeAll {
 		modeLabel := fmt.Sprintf("[%s]", m.viewMode.String())
 		status += " " + styleFilterInfo().Render(modeLabel)
+	}
+
+	// Show sort indicator when not in default (status cascade) order
+	if m.sortSpec.Key != graph.SortDefault {
+		status += " " + styleFilterInfo().Render(fmt.Sprintf("Sort: %s", m.sortSpec.Label()))
 	}
 
 	if m.filterText != "" {
@@ -197,6 +203,10 @@ func (m *App) View() string {
 		}
 	} else if m.activeOverlay == OverlayFilter && m.filterOverlay != nil {
 		if layer := m.filterOverlay.Layer(m.width, m.height, headerHeight, bottomMargin); layer != nil {
+			overlayLayers = append(overlayLayers, layer)
+		}
+	} else if m.activeOverlay == OverlaySort && m.sortOverlay != nil {
+		if layer := m.sortOverlay.Layer(m.width, m.height, headerHeight, bottomMargin); layer != nil {
 			overlayLayers = append(overlayLayers, layer)
 		}
 	} else if m.showHelp {

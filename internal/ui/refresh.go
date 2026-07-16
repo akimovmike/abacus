@@ -172,6 +172,13 @@ func (m *App) applyRefresh(newRoots []*graph.Node, newDigest map[string]string, 
 	// Preserve loaded comments from old nodes to avoid flicker during refresh
 	oldCommentState := collectCommentState(m.roots)
 	m.roots = newRoots
+	// The UI's chosen sort is authoritative: refreshDataCmd always builds in
+	// Default order, so for a custom sort we re-apply the active spec here before
+	// rows are recalculated (auto-refresh never clobbers the sort). Default needs
+	// no work — the build order already matches.
+	if m.sortSpec.Key != graph.SortDefault {
+		graph.ApplySort(m.roots, m.sortSpec)
+	}
 	transferCommentState(m.roots, oldCommentState)
 	if !newModTime.IsZero() {
 		m.lastDBModTime = newModTime

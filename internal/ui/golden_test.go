@@ -8,6 +8,7 @@ import (
 	"testing"
 	"time"
 
+	"abacus/internal/graph"
 	"abacus/internal/ui/theme"
 )
 
@@ -60,6 +61,17 @@ func TestOverlayAndToastGoldenSnapshots(t *testing.T) {
 				t.Fatalf("expected priority overlay canvas for theme %s", name)
 			}
 			assertGoldenSnapshot(t, fmt.Sprintf("%s_priority_overlay.golden", name), priorityCanvas.Render())
+
+			sortOverlay := NewSortOverlay(graph.SortSpec{Key: graph.SortPriority, Desc: true})
+			sortLayer := sortOverlay.Layer(80, 24, 1, 1)
+			if sortLayer == nil {
+				t.Fatalf("expected sort overlay layer for theme %s", name)
+			}
+			sortCanvas := sortLayer.Render()
+			if sortCanvas == nil {
+				t.Fatalf("expected sort overlay canvas for theme %s", name)
+			}
+			assertGoldenSnapshot(t, fmt.Sprintf("%s_sort_overlay.golden", name), sortCanvas.Render())
 
 			priorityApp := &App{
 				priorityToastVisible:     true,

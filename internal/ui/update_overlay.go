@@ -6,6 +6,7 @@ import (
 	"time"
 
 	"abacus/internal/config"
+	"abacus/internal/graph"
 
 	tea "github.com/charmbracelet/bubbletea"
 )
@@ -361,6 +362,41 @@ func (m *App) handleOverlayMsg(msg tea.Msg) (tea.Model, tea.Cmd, bool) {
 	case FilterCancelledMsg:
 		m.activeOverlay = OverlayNone
 		m.filterOverlay = nil
+		return m, nil, true
+
+	case SortChangedMsg:
+		m.activeOverlay = OverlayNone
+		m.sortOverlay = nil
+		// Preserve the cursor on the same bead across the re-sort (indices shift).
+		var curID, curParentID string
+		if m.cursor >= 0 && m.cursor < len(m.visibleRows) {
+			row := m.visibleRows[m.cursor]
+			curID = row.Node.Issue.ID
+			if row.Parent != nil {
+				curParentID = row.Parent.Issue.ID
+			}
+		}
+		m.sortSpec = msg.Spec
+		graph.ApplySort(m.roots, m.sortSpec)
+		if err := config.SaveSort(m.sortSpec.String()); err != nil {
+			m.lastError = err.Error()
+			m.lastErrorSource = errorSourceOperation
+			m.showErrorToast = true
+			m.errorToastStart = time.Now()
+		}
+		m.recalcVisibleRows() // also clears any active selection
+		if curID != "" && !m.restoreCursorToRow(curID, curParentID) {
+			m.restoreCursorToID(curID)
+		}
+		m.updateViewportContent()
+		if m.showErrorToast {
+			return m, scheduleErrorToastTick(), true
+		}
+		return m, nil, true
+
+	case SortCancelledMsg:
+		m.activeOverlay = OverlayNone
+		m.sortOverlay = nil
 		return m, nil, true
 
 	case priorityUpdateCompleteMsg:
