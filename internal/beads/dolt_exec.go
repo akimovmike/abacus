@@ -225,8 +225,15 @@ func (r *doltRunner) query(ctx context.Context, sqlText string) ([]map[string]an
 			return parseDoltRows(out)
 		}
 		lastErr = fmt.Errorf("dolt sql failed (%s): %w", firstLine(out), err)
-		if attempt >= len(doltLockBusyBackoffs) || !isDoltLockBusy(out) {
+		if !isDoltLockBusy(out) {
 			return nil, lastErr
+		}
+		if attempt >= len(doltLockBusyBackoffs) {
+			// Diagnostic marker so an exhausted lock-busy retry is
+			// identifiable at the call site/logs as sustained store
+			// contention, not a random query failure (there is no
+			// separate metrics/watchdog layer in this CLI/TUI process).
+			return nil, fmt.Errorf("dolt sql lock-busy after %d attempts: %w", attempt+1, lastErr)
 		}
 		select {
 		case <-time.After(doltLockBusyBackoffs[attempt]):
