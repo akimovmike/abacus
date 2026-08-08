@@ -176,6 +176,11 @@ func firstLine(b []byte) string {
 
 // snapshot returns the current HEAD commit hash for r's database, used to
 // pin subsequent reads to a consistent point via asOf.
+//
+// Note: concurrent refreshes are NOT coalesced at this runner layer; each
+// call serializes only via r.mu (one dolt invocation at a time). Single-flight
+// coalescing of concurrent refreshes is added at the reader layer in Task 8
+// (doltClient.refreshMu).
 func (r *doltRunner) snapshot(ctx context.Context) (string, error) {
 	rows, err := r.query(ctx, "SELECT HASHOF('HEAD') AS h")
 	if err != nil {
