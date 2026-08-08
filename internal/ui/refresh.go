@@ -337,7 +337,9 @@ func (m *App) applyRefresh(newRoots []*graph.Node, newDigest map[string]string, 
 		// force-reloads every already-loaded issue, while an external
 		// comment/detail edit on an unchanged-looking issue is still caught
 		// (see restoreUnchangedIssues).
-		restoreUnchangedIssues(m.roots, oldCommentState, oldDetailState, oldChangeSignals)
+		rs := restoreUnchangedIssues(m.roots, oldCommentState, oldDetailState, oldChangeSignals)
+		debug.Logf("targeted reconcile: comments kept %d/%d, detail kept %d/%d",
+			rs.commentsKept, rs.commentCandidates, rs.detailKept, rs.detailCandidates)
 	}
 	if !newModTime.IsZero() {
 		m.lastDBModTime = newModTime

@@ -526,6 +526,44 @@ func TestReconcileInvalidatesOnlyChangedIssueOthersStayCached(t *testing.T) {
 	}
 }
 
+// TestRestoreUnchangedIssuesStats locks in the counters restoreUnchangedIssues
+// returns for applyRefresh's debug.Logf observable trail (ab-6irx.6): a
+// candidate is any issue that was PREVIOUSLY successfully loaded (regardless
+// of outcome), and "kept" is the subset of those whose content signal is
+// still unchanged. An issue with only a recorded error (never loaded) must
+// not count as a candidate at all -- it was never a caching win to report.
+func TestRestoreUnchangedIssuesStats(t *testing.T) {
+	roots := []*graph.Node{
+		{Issue: beads.FullIssue{ID: "ab-unchanged", UpdatedAt: "t1", CommentFingerprint: "1|a"}},
+		{Issue: beads.FullIssue{ID: "ab-changed", UpdatedAt: "t2", CommentFingerprint: "2|b"}},
+		{Issue: beads.FullIssue{ID: "ab-errored-only", UpdatedAt: "t3"}},
+	}
+	oldComments := map[string]commentState{
+		"ab-unchanged":    {comments: []beads.Comment{{ID: "1"}}, commentsLoaded: true},
+		"ab-changed":      {comments: []beads.Comment{{ID: "2"}}, commentsLoaded: true},
+		"ab-errored-only": {commentError: "boom"}, // commentsLoaded=false: not a candidate
+	}
+	oldDetails := map[string]detailState{
+		"ab-unchanged":    {description: "d1", detailLoaded: true},
+		"ab-changed":      {description: "d2", detailLoaded: true},
+		"ab-errored-only": {detailError: "boom"}, // detailLoaded=false: not a candidate
+	}
+	oldSignals := map[string]issueChangeSignal{
+		"ab-unchanged": {updatedAt: "t1", commentFingerprint: "1|a"},  // matches -> kept
+		"ab-changed":   {updatedAt: "old", commentFingerprint: "old"}, // differs -> dropped
+		// ab-errored-only intentionally absent (never successfully read before).
+	}
+
+	stats := restoreUnchangedIssues(roots, oldComments, oldDetails, oldSignals)
+
+	if stats.commentCandidates != 2 || stats.commentsKept != 1 {
+		t.Fatalf("comment stats = %+v, want candidates=2 kept=1", stats)
+	}
+	if stats.detailCandidates != 2 || stats.detailKept != 1 {
+		t.Fatalf("detail stats = %+v, want candidates=2 kept=1", stats)
+	}
+}
+
 // TestCommentAndDetailErrorExcludedFromRetryAfterDeltaTickButClearOnReconcile
 // is the regression test for the retry-storm fix: CommentError/DetailError
 // are Node-level fields (not part of beads.FullIssue), so Delta's merge

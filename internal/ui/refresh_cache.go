@@ -255,35 +255,62 @@ func collectChangeSignals(roots []*graph.Node) map[string]issueChangeSignal {
 // This is what makes a manual 'r' fast on a large repo: only issues that
 // actually changed (or previously failed) pay the reload cost again: every
 // other already-loaded issue's cache survives untouched.
+//
+// Returns restoreStats so the caller can log an observable trail (mirrors
+// startRefresh's reconcile/delta debug.Logf): a silent regression to
+// invalidate-everything (perf bug back) shows up as keptComments/
+// keptDetail permanently 0 despite a nonzero candidate count, and a silent
+// regression to invalidate-nothing (staleness bug: fingerprints/updatedAt
+// stop changing, e.g. attachCommentFingerprints quietly returning no rows)
+// shows up as keptComments/keptDetail permanently equal to their candidate
+// counts across many reconciles even though the underlying data is known to
+// change -- both are visible in ~/.abacus/debug.log without a live repro.
 func restoreUnchangedIssues(
 	roots []*graph.Node,
 	oldComments map[string]commentState,
 	oldDetails map[string]detailState,
 	oldSignals map[string]issueChangeSignal,
-) {
+) restoreStats {
+	var stats restoreStats
 	var walk func([]*graph.Node)
 	walk = func(nodes []*graph.Node) {
 		for _, n := range nodes {
 			sig, hadSig := oldSignals[n.Issue.ID]
-			if cs, ok := oldComments[n.Issue.ID]; ok && cs.commentsLoaded &&
-				hadSig && sig.commentFingerprint == n.Issue.CommentFingerprint {
-				n.Issue.Comments = cs.comments
-				n.CommentsLoaded = true
+			if cs, ok := oldComments[n.Issue.ID]; ok && cs.commentsLoaded {
+				stats.commentCandidates++
+				if hadSig && sig.commentFingerprint == n.Issue.CommentFingerprint {
+					n.Issue.Comments = cs.comments
+					n.CommentsLoaded = true
+					stats.commentsKept++
+				}
 			}
-			if ds, ok := oldDetails[n.Issue.ID]; ok && ds.detailLoaded &&
-				hadSig && sig.updatedAt == n.Issue.UpdatedAt {
-				n.Issue.Description = ds.description
-				n.Issue.Design = ds.design
-				n.Issue.Notes = ds.notes
-				n.Issue.AcceptanceCriteria = ds.acceptanceCriteria
-				n.Issue.CloseReason = ds.closeReason
-				n.Issue.ExternalRef = ds.externalRef
-				n.Issue.DetailLoaded = true
+			if ds, ok := oldDetails[n.Issue.ID]; ok && ds.detailLoaded {
+				stats.detailCandidates++
+				if hadSig && sig.updatedAt == n.Issue.UpdatedAt {
+					n.Issue.Description = ds.description
+					n.Issue.Design = ds.design
+					n.Issue.Notes = ds.notes
+					n.Issue.AcceptanceCriteria = ds.acceptanceCriteria
+					n.Issue.CloseReason = ds.closeReason
+					n.Issue.ExternalRef = ds.externalRef
+					n.Issue.DetailLoaded = true
+					stats.detailKept++
+				}
 			}
 			walk(n.Children)
 		}
 	}
 	walk(roots)
+	return stats
+}
+
+// restoreStats reports how many previously-loaded issues restoreUnchangedIssues
+// kept cached (content-unchanged) vs how many candidates existed, per cache
+// kind. See restoreUnchangedIssues's doc comment for the regressions this
+// makes observable.
+type restoreStats struct {
+	commentsKept, commentCandidates int
+	detailKept, detailCandidates    int
 }
 
 // applyCommentsToNode sets freshly fetched comments on the matching node(s) and
