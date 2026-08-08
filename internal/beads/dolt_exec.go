@@ -84,7 +84,8 @@ type commandRunner func(ctx context.Context, dir string, args ...string) ([]byte
 // context timeout/cancellation kills the whole group, not just the parent
 // process.
 func execDolt(ctx context.Context, dir string, args ...string) ([]byte, error) {
-	cmd := exec.CommandContext(ctx, "dolt", args...) //nolint:gosec // G204: CLI wrapper intentionally shells out to dolt command
+	//nolint:gosec // G204: CLI wrapper intentionally shells out to dolt command
+	cmd := exec.CommandContext(ctx, "dolt", args...)
 	cmd.Dir = dir
 	cmd.SysProcAttr = &syscall.SysProcAttr{Setpgid: true}
 	cmd.Cancel = func() error {
@@ -171,4 +172,28 @@ func firstLine(b []byte) string {
 		return string(b[:i])
 	}
 	return string(b)
+}
+
+// snapshot returns the current HEAD commit hash for r's database, used to
+// pin subsequent reads to a consistent point via asOf.
+func (r *doltRunner) snapshot(ctx context.Context) (string, error) {
+	rows, err := r.query(ctx, "SELECT HASHOF('HEAD') AS h")
+	if err != nil {
+		return "", err
+	}
+	if len(rows) == 0 {
+		return "", fmt.Errorf("no snapshot hash returned")
+	}
+	h, _ := rows[0]["h"].(string)
+	if !idCharset.MatchString(h) {
+		return "", fmt.Errorf("unexpected snapshot hash %q", h)
+	}
+	return h, nil
+}
+
+// asOf returns an " AS OF '<hash>'" clause for appending to a FROM clause,
+// pinning a query to the commit produced by snapshot.
+func asOf(hash string) string {
+	lit, _ := sqlLiteral(hash) // hash validated by snapshot()
+	return " AS OF " + lit
 }

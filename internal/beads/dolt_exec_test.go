@@ -261,3 +261,17 @@ func TestFirstLine(t *testing.T) {
 		}
 	}
 }
+
+func TestSnapshotAsOf(t *testing.T) {
+	stub := func(ctx context.Context, dir string, args ...string) ([]byte, error) {
+		return []byte(`{"rows":[{"h":"abc123"}]}`), nil
+	}
+	r := &doltRunner{dir: "/x", run: stub, mu: &sync.Mutex{}}
+	h, err := r.snapshot(context.Background())
+	if err != nil || h != "abc123" {
+		t.Fatalf("h=%q err=%v", h, err)
+	}
+	if asOf("abc123") != " AS OF 'abc123'" {
+		t.Fatalf("asOf=%q", asOf("abc123"))
+	}
+}
