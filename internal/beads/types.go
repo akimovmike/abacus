@@ -75,4 +75,8 @@ type FullIssue struct {
 	Comments           []Comment    `json:"comments"`
 	Dependencies       []Dependency `json:"dependencies"`
 	Dependents         []Dependent  `json:"dependents"`
+	// DetailLoaded reports whether the heavy detail fields (Description, Design,
+	// Notes, AcceptanceCriteria, CloseReason) and Comments have been loaded.
+	// Skeleton reads leave it false; the detail lazy-load sets it true.
+	DetailLoaded bool `json:"-"`
 }
