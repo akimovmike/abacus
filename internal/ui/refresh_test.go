@@ -265,7 +265,7 @@ func TestDoltShapedCommentsSurviveRefresh(t *testing.T) {
 		t.Fatalf("refreshDataCmd: %#v", result)
 	}
 
-	app.applyRefresh(msg.roots, msg.digest, msg.dbModTime)
+	app.applyRefresh(msg.roots, msg.digest, msg.dbModTime, msg.reconcile)
 
 	node := app.findNodeByID("ab-1")
 	if node == nil {

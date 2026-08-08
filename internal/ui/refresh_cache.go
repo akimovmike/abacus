@@ -52,6 +52,26 @@ func transferCommentState(roots []*graph.Node, state map[string]commentState) {
 	walk(roots)
 }
 
+// transferCommentError carries forward only CommentError from state (not
+// Comments/CommentsLoaded — Delta's own merge already handles that content
+// correctly per-issue). Used on a Delta-capable client's incremental tick:
+// CommentError is a Node-level field Delta cannot merge (it isn't part of
+// beads.FullIssue), so without this a persistently-failing comment fetch's
+// exclusion from loadCommentsInBackground's retry sweep (needsCommentFetch
+// skips CommentError != "") would reset on every single tick.
+func transferCommentError(roots []*graph.Node, state map[string]commentState) {
+	var walk func([]*graph.Node)
+	walk = func(nodes []*graph.Node) {
+		for _, n := range nodes {
+			if cs, ok := state[n.Issue.ID]; ok && cs.commentError != "" {
+				n.CommentError = cs.commentError
+			}
+			walk(n.Children)
+		}
+	}
+	walk(roots)
+}
+
 // invalidateCommentCache resets the comment cache for the given issue ID across
 // the tree so the background loader re-fetches it on the next refresh. Called
 // after adding a comment: without it, collectCommentState/transferCommentState
@@ -132,6 +152,23 @@ func transferDetailState(roots []*graph.Node, state map[string]detailState) {
 				n.Issue.CloseReason = ds.closeReason
 				n.Issue.ExternalRef = ds.externalRef
 				n.Issue.DetailLoaded = ds.detailLoaded
+				n.DetailError = ds.detailError
+			}
+			walk(n.Children)
+		}
+	}
+	walk(roots)
+}
+
+// transferDetailError carries forward only DetailError from state (not the
+// detail content fields — Delta's own merge already handles those correctly
+// per-issue via beads.FullIssue.DetailLoaded). Mirrors transferCommentError
+// for the lazy detail load's Node-level error field.
+func transferDetailError(roots []*graph.Node, state map[string]detailState) {
+	var walk func([]*graph.Node)
+	walk = func(nodes []*graph.Node) {
+		for _, n := range nodes {
+			if ds, ok := state[n.Issue.ID]; ok && ds.detailError != "" {
 				n.DetailError = ds.detailError
 			}
 			walk(n.Children)

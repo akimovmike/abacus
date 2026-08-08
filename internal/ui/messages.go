@@ -17,6 +17,12 @@ type refreshCompleteMsg struct {
 	roots     []*graph.Node
 	digest    map[string]string
 	dbModTime time.Time
+	// reconcile records whether this refresh was a full Export reconcile
+	// (true) or an incremental Delta tick (false), so applyRefresh knows
+	// whether to carry forward Node-level CommentError/DetailError (delta
+	// tick — Delta's merge can't carry them, they aren't part of
+	// beads.FullIssue) or let them clear (reconcile — intended fresh retry).
+	reconcile bool
 	err       error
 }
 

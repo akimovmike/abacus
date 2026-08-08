@@ -626,7 +626,7 @@ func TestRefreshPreservesMouseScrolledTreeViewportByTopRowIdentity(t *testing.T)
 	app.treeMouseScrolled = true
 
 	newRoots := mouseTreeNodes("ab-x", "ab-a", "ab-b", "ab-c", "ab-d", "ab-e", "ab-f")
-	app.applyRefresh(newRoots, buildIssueDigest(newRoots), time.Time{})
+	app.applyRefresh(newRoots, buildIssueDigest(newRoots), time.Time{}, true)
 
 	if app.treeTopLine != 3 {
 		t.Fatalf("expected refresh to keep ab-c at top index 3, got %d", app.treeTopLine)
@@ -651,7 +651,7 @@ func TestRefreshPreservesMouseScrolledTreeViewportByApproximateIndexWhenTopRowIs
 	app.treeMouseScrolled = true
 
 	newRoots := mouseTreeNodes("ab-a", "ab-b", "ab-c", "ab-e", "ab-f", "ab-g", "ab-h", "ab-i", "ab-j")
-	app.applyRefresh(newRoots, buildIssueDigest(newRoots), time.Time{})
+	app.applyRefresh(newRoots, buildIssueDigest(newRoots), time.Time{}, true)
 
 	if app.treeTopLine != 3 {
 		t.Fatalf("expected refresh to fall back to approximate top index 3, got %d", app.treeTopLine)

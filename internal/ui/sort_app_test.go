@@ -84,7 +84,7 @@ func TestApplyRefreshReSortsToActiveSpec(t *testing.T) {
 	app.recalcVisibleRows()
 
 	newRoots := []*graph.Node{mk("b", 2), mk("a", 0), mk("c", 4)} // not priority-ordered
-	app.applyRefresh(newRoots, buildIssueDigest(newRoots), time.Now())
+	app.applyRefresh(newRoots, buildIssueDigest(newRoots), time.Now(), true)
 
 	if got := rowIDs(app); !equalStrings(got, []string{"a", "b", "c"}) {
 		t.Fatalf("post-refresh order = %v, want [a b c]", got)

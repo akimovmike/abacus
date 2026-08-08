@@ -80,6 +80,7 @@ func refreshDataCmd(
 			roots:     roots,
 			digest:    buildIssueDigest(roots),
 			dbModTime: targetModTime,
+			reconcile: reconcile,
 		}
 	}
 }
@@ -113,9 +114,12 @@ func flattenIssues(roots []*graph.Node) []beads.FullIssue {
 			if n == nil {
 				continue
 			}
-			if _, ok := seen[n.Issue.ID]; !ok {
-				seen[n.Issue.ID] = n.Issue
+			if _, ok := seen[n.Issue.ID]; ok {
+				// Already visited via another parent edge — its subtree was
+				// already walked then too, so skip re-walking it here.
+				continue
 			}
+			seen[n.Issue.ID] = n.Issue
 			walk(n.Children)
 		}
 	}
@@ -178,6 +182,10 @@ func (m *App) startRefresh(targetModTime time.Time, reconcile bool) tea.Cmd {
 	}
 	m.refreshInFlight = true
 	m.lastAttemptedModTime = targetModTime
+	// Incremented at dispatch time, not completion, so a failed delta
+	// attempt still counts toward the cadence (mirrors lastAttemptedModTime's
+	// dispatch-time watermark above) — a stuck/erroring backend can't
+	// indefinitely postpone the bounded reconcile that would otherwise fix it.
 	if reconcile {
 		m.deltaTicksSinceReconcile = 0
 	} else {
@@ -263,19 +271,19 @@ func optionalModTime(path string) (time.Time, error) {
 	return info.ModTime(), nil
 }
 
-func (m *App) applyRefresh(newRoots []*graph.Node, newDigest map[string]string, newModTime time.Time) {
+func (m *App) applyRefresh(newRoots []*graph.Node, newDigest map[string]string, newModTime time.Time, reconcile bool) {
 	state := m.captureState()
 	oldDigest := buildIssueDigest(m.roots)
 
 	// A Delta-capable client (currently only dolt) never needs the legacy
-	// transfer below: an incremental Delta's merge already carries forward
-	// each unchanged issue's loaded Comments/DetailLoaded straight from the
-	// prevIssues snapshot startRefresh flattened before dispatch, and a
-	// deliberate full reconcile's Export always returns skeleton-only rows
-	// for everyone (Comments=nil, DetailLoaded=false) — precisely the
+	// full transfer below: an incremental Delta's merge already carries
+	// forward each unchanged issue's loaded Comments/DetailLoaded straight
+	// from the prevIssues snapshot startRefresh flattened before dispatch,
+	// and a deliberate full reconcile's Export always returns skeleton-only
+	// rows for everyone (Comments=nil, DetailLoaded=false) — precisely the
 	// invalidate-all-caches behavior design fold R02 wants, so leaving that
-	// stand IS the invalidation. Running the transfer here as well would
-	// wrongly restore stale data onto an issue a reconcile or a Delta
+	// stand IS the invalidation. Running the full transfer here as well
+	// would wrongly restore stale data onto an issue a reconcile or a Delta
 	// change-set just (correctly) invalidated.
 	//
 	// A non-Delta client (sqlite, mocks) keeps its pre-existing, unchanged
@@ -284,9 +292,23 @@ func (m *App) applyRefresh(newRoots []*graph.Node, newDigest map[string]string, 
 	// skeleton Export would blank out an already-loaded detail pane on
 	// every single auto-refresh tick.
 	_, deltaCapable := m.client.(deltaClient)
+	// Collected whenever the state below will actually be used: always for a
+	// non-Delta client (full transfer), and for a Delta-capable client's
+	// DELTA tick only (narrow error-carry-through — see the transfer switch
+	// below for why). A Delta-capable client's RECONCILE skips this entirely:
+	// nothing here should survive it.
+	//
+	// The delta-tick case matters because CommentError/DetailError are
+	// Node-level fields, not part of beads.FullIssue, so Delta's merge
+	// cannot carry them forward the way it carries Comments/DetailLoaded.
+	// Without restoring them here, a persistently-failing fetch's exclusion
+	// from loadCommentsInBackground's retry sweep (needsCommentFetch skips
+	// CommentError != "") resets on every single DB-changed tick — an
+	// unbounded retry storm with no backoff, contending for the single dolt
+	// semaphore already strained by invalidate-all-on-reconcile.
 	var oldCommentState map[string]commentState
 	var oldDetailState map[string]detailState
-	if !deltaCapable {
+	if !deltaCapable || !reconcile {
 		oldCommentState = collectCommentState(m.roots)
 		oldDetailState = collectDetailState(m.roots)
 	}
@@ -298,9 +320,16 @@ func (m *App) applyRefresh(newRoots []*graph.Node, newDigest map[string]string, 
 	if m.sortSpec.Key != graph.SortDefault {
 		graph.ApplySort(m.roots, m.sortSpec)
 	}
-	if !deltaCapable {
+	switch {
+	case !deltaCapable:
 		transferCommentState(m.roots, oldCommentState)
 		transferDetailState(m.roots, oldDetailState)
+	case !reconcile:
+		// A full reconcile deliberately lets these clear (fresh retry is the
+		// intended behavior of invalidate-all); only a delta tick carries
+		// them through.
+		transferCommentError(m.roots, oldCommentState)
+		transferDetailError(m.roots, oldDetailState)
 	}
 	if !newModTime.IsZero() {
 		m.lastDBModTime = newModTime

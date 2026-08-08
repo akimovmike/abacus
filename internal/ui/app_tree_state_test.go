@@ -287,7 +287,7 @@ func TestMultiParentExpandStatePreservedOnRefresh(t *testing.T) {
 	newSharedTask.Parents = []*graph.Node{newEpic1, newEpic2}
 
 	newRoots := []*graph.Node{newEpic1, newEpic2}
-	m.applyRefresh(newRoots, buildIssueDigest(newRoots), time.Now())
+	m.applyRefresh(newRoots, buildIssueDigest(newRoots), time.Now(), true)
 
 	// Verify per-instance state was preserved
 	// Task under epic1 should still be collapsed, task under epic2 expanded
@@ -735,7 +735,7 @@ func TestApplyRefreshRestoresState(t *testing.T) {
 	}
 	newDigest := buildIssueDigest([]*graph.Node{rootNew})
 
-	m.applyRefresh([]*graph.Node{rootNew}, newDigest, time.Now())
+	m.applyRefresh([]*graph.Node{rootNew}, newDigest, time.Now(), true)
 
 	if m.filterText != "child" {
 		t.Fatalf("expected filter preserved, got %s", m.filterText)
@@ -775,7 +775,7 @@ func TestApplyRefreshPreservesCollapsedStatePerDocs(t *testing.T) {
 		Issue:    beads.FullIssue{ID: "ab-011", Title: "Root", Status: "open"},
 		Children: []*graph.Node{childNew},
 	}
-	m.applyRefresh([]*graph.Node{rootNew}, buildIssueDigest([]*graph.Node{rootNew}), time.Now())
+	m.applyRefresh([]*graph.Node{rootNew}, buildIssueDigest([]*graph.Node{rootNew}), time.Now(), true)
 	if m.isNodeExpandedInView(nodeToRow(rootNew)) {
 		t.Fatalf("expected collapsed state preserved after refresh per docs")
 	}

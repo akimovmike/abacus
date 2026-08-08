@@ -133,7 +133,7 @@ func (m *App) handleBackgroundMsg(msg tea.Msg) (tea.Model, tea.Cmd, bool) {
 		}
 		m.refreshFailCount = 0
 		m.errorShownOnce = false
-		m.applyRefresh(msg.roots, msg.digest, msg.dbModTime)
+		m.applyRefresh(msg.roots, msg.digest, msg.dbModTime, msg.reconcile)
 		if modTime, err := m.latestDBModTime(); err == nil && !modTime.IsZero() {
 			m.lastDBModTime = modTime
 		}
