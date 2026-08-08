@@ -28,7 +28,7 @@ func newStubClient(t *testing.T, responses map[string]string) *doltClient {
 		}
 		return []byte(`{}`), nil
 	}
-	return &doltClient{r: &doltRunner{dir: "/x", run: run, mu: &sync.Mutex{}}}
+	return &doltClient{r: &doltRunner{dir: "/x", run: run, mu: &sync.Mutex{}}, refreshMu: &sync.Mutex{}}
 }
 
 func TestDoltSkeletonAssembles(t *testing.T) {
@@ -155,5 +155,22 @@ func TestDoltCommentsEmpty(t *testing.T) {
 	got, err := c.Comments(context.Background(), "ab-1")
 	if err != nil || len(got) != 0 {
 		t.Fatalf("got=%v err=%v", got, err)
+	}
+}
+
+func TestDoltExportAndShow(t *testing.T) {
+	c := newStubClient(t, map[string]string{
+		"HASHOF":             `{"rows":[{"h":"snap1"}]}`,
+		"FROM issues":        `{"rows":[{"id":"ab-1","title":"T","status":"open","issue_type":"task","priority":1,"created_by":"Al","created_at":"2026-01-20 18:53:52","updated_at":"2026-01-20 18:53:52"}]}`,
+		"description,design": `{"rows":[{"id":"ab-1","description":"D"}]}`,
+		"FROM comments":      `{}`,
+	})
+	exp, err := c.Export(context.Background())
+	if err != nil || len(exp) != 1 || exp[0].DetailLoaded {
+		t.Fatalf("export=%v err=%v", exp, err)
+	}
+	shown, err := c.Show(context.Background(), []string{"ab-1"})
+	if err != nil || len(shown) != 1 || !shown[0].DetailLoaded || shown[0].Description != "D" {
+		t.Fatalf("show=%v err=%v", shown, err)
 	}
 }

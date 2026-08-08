@@ -4,13 +4,99 @@ import (
 	appErrors "abacus/internal/errors"
 	"context"
 	"fmt"
+	"sync"
 )
 
 // doltClient reads Beads data directly via `dolt sql` against an embedded
 // Dolt database, delegating writes to an embedded CLI Writer.
 type doltClient struct {
-	r *doltRunner
+	r         *doltRunner
+	refreshMu *sync.Mutex
 	Writer
+}
+
+var _ Client = (*doltClient)(nil)
+
+// NewDoltClient resolves the embedded Dolt database directory for database
+// under beadsDir, verifies the dolt CLI meets MinDoltVersion, and returns a
+// Client that reads via `dolt sql` and delegates writes to w.
+func NewDoltClient(beadsDir, database string, w Writer) (Client, error) {
+	dir, err := resolveDoltDir(beadsDir, database)
+	if err != nil {
+		return nil, err
+	}
+	if err := checkDoltVersion(context.Background(), execDolt); err != nil {
+		return nil, err
+	}
+	return &doltClient{
+		r:         &doltRunner{dir: dir, run: execDolt, mu: &sync.Mutex{}},
+		refreshMu: &sync.Mutex{},
+		Writer:    w,
+	}, nil
+}
+
+// Export implements Reader: it takes a fresh snapshot and returns the
+// skeleton (labels + dependencies, no heavy detail fields) of every
+// non-tombstoned issue as of that snapshot. Concurrent callers are
+// single-flighted via refreshMu so only one logical refresh runs at a time.
+func (c *doltClient) Export(ctx context.Context) ([]FullIssue, error) {
+	c.refreshMu.Lock()
+	defer c.refreshMu.Unlock()
+
+	snap, err := c.r.snapshot(ctx)
+	if err != nil {
+		return nil, err
+	}
+	return c.skeleton(ctx, asOf(snap))
+}
+
+// List implements Reader: it returns the id of every issue Export would
+// return, via a full Export (skeleton load), projected down to LiteIssue.
+func (c *doltClient) List(ctx context.Context) ([]LiteIssue, error) {
+	full, err := c.Export(ctx)
+	if err != nil {
+		return nil, err
+	}
+	out := make([]LiteIssue, len(full))
+	for i, iss := range full {
+		out[i] = LiteIssue{ID: iss.ID}
+	}
+	return out, nil
+}
+
+// Show implements Reader: it takes a single snapshot, builds the skeleton
+// once, then loads the heavy detail fields (and comments) for exactly the
+// requested ids under that same snapshot, so every returned issue reflects
+// one consistent point in history. Show does not take refreshMu: it snapshots
+// independently of Export/List's single-flighted refresh.
+func (c *doltClient) Show(ctx context.Context, ids []string) ([]FullIssue, error) {
+	if len(ids) == 0 {
+		return []FullIssue{}, nil
+	}
+	snap, err := c.r.snapshot(ctx)
+	if err != nil {
+		return nil, err
+	}
+	asof := asOf(snap)
+	all, err := c.skeleton(ctx, asof)
+	if err != nil {
+		return nil, err
+	}
+	want := make(map[string]struct{}, len(ids))
+	for _, id := range ids {
+		want[id] = struct{}{}
+	}
+	var out []FullIssue
+	for i := range all {
+		if _, ok := want[all[i].ID]; !ok {
+			continue
+		}
+		if err := c.loadDetail(ctx, asof, &all[i]); err != nil {
+			return nil, err
+		}
+		out = append(out, all[i])
+	}
+	return out, nil
 }
 
 // skeletonCols lists the light issue columns read by skeleton (excludes the
