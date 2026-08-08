@@ -141,3 +141,63 @@ func intOf(v any) int {
 		return 0
 	}
 }
+
+// detailCols lists the heavy issue columns loaded lazily by loadDetail,
+// separate from skeletonCols so a full issue listing avoids fetching large
+// text fields for issues the user never opens.
+const detailCols = "id,description,design,notes,acceptance_criteria,close_reason,external_ref"
+
+// loadDetail fetches the heavy detail fields and comments for iss (already
+// populated by skeleton) as of asof, and sets DetailLoaded=true on success.
+func (c *doltClient) loadDetail(ctx context.Context, asof string, iss *FullIssue) error {
+	lit, err := sqlLiteral(iss.ID)
+	if err != nil {
+		return err
+	}
+	rows, err := c.r.query(ctx, "SELECT "+detailCols+" FROM issues"+asof+" WHERE id="+lit)
+	if err != nil {
+		return err
+	}
+	if len(rows) > 0 {
+		row := rows[0]
+		iss.Description = str(row["description"])
+		iss.Design = str(row["design"])
+		iss.Notes = str(row["notes"])
+		iss.AcceptanceCriteria = str(row["acceptance_criteria"])
+		iss.CloseReason = str(row["close_reason"])
+		iss.ExternalRef = str(row["external_ref"])
+	}
+
+	comments, err := c.Comments(ctx, iss.ID)
+	if err != nil {
+		return err
+	}
+	iss.Comments = comments
+	iss.DetailLoaded = true
+	return nil
+}
+
+// Comments implements Reader: it loads all comments for issueID ordered by
+// creation time, returning an empty (never nil) slice when there are none.
+func (c *doltClient) Comments(ctx context.Context, issueID string) ([]Comment, error) {
+	lit, err := sqlLiteral(issueID)
+	if err != nil {
+		return nil, err
+	}
+	rows, err := c.r.query(ctx,
+		"SELECT id,issue_id,author,text,created_at FROM comments WHERE issue_id="+lit+" ORDER BY created_at,id")
+	if err != nil {
+		return nil, err
+	}
+	out := make([]Comment, 0, len(rows))
+	for _, row := range rows {
+		out = append(out, Comment{
+			ID:        str(row["id"]),
+			IssueID:   str(row["issue_id"]),
+			Author:    str(row["author"]),
+			Text:      str(row["text"]),
+			CreatedAt: normalizeDoltTime(str(row["created_at"])),
+		})
+	}
+	return out, nil
+}
