@@ -202,6 +202,90 @@ func invalidateDetailCache(roots []*graph.Node, issueID string) {
 	walk(roots)
 }
 
+// issueChangeSignal snapshots the two per-issue fields a targeted reconcile
+// compares against a freshly read tree to decide whether a previously
+// loaded issue's cache is still safe to keep (ab-6irx.6): UpdatedAt (bumped
+// by any edit to the issue row itself -- description/notes/acceptance/close
+// reason all live there) and CommentFingerprint (comments live in a
+// separate table and don't bump UpdatedAt, so they need their own signal;
+// see beads.FullIssue.CommentFingerprint).
+type issueChangeSignal struct {
+	updatedAt          string
+	commentFingerprint string
+}
+
+// collectChangeSignals snapshots every node's UpdatedAt/CommentFingerprint
+// from the tree, keyed by issue ID, for restoreUnchangedIssues to compare a
+// freshly read tree against.
+func collectChangeSignals(roots []*graph.Node) map[string]issueChangeSignal {
+	signals := make(map[string]issueChangeSignal)
+	var walk func([]*graph.Node)
+	walk = func(nodes []*graph.Node) {
+		for _, n := range nodes {
+			signals[n.Issue.ID] = issueChangeSignal{
+				updatedAt:          n.Issue.UpdatedAt,
+				commentFingerprint: n.Issue.CommentFingerprint,
+			}
+			walk(n.Children)
+		}
+	}
+	walk(roots)
+	return signals
+}
+
+// restoreUnchangedIssues is a Delta-capable client's targeted reconcile
+// (ab-6irx.6): roots is a fresh full-Export skeleton (every node blank --
+// Comments=nil, DetailLoaded=false, per validateSkeletonNotPreloaded), and
+// this restores a node's cached comments/detail from old/oldSignals ONLY
+// when BOTH (a) the prior load actually succeeded (commentsLoaded /
+// detailLoaded true) and (b) the issue's content signal is unchanged since
+// then (CommentFingerprint / UpdatedAt still match). Every other node is
+// left at the fresh skeleton's blank state, which covers three cases at
+// once without special-casing any of them:
+//   - a changed issue (signal differs) -- forces a real reload of its new
+//     content, exactly the freshness guarantee a manual 'r' promises;
+//   - a brand new issue (absent from old/oldSignals) -- nothing to
+//     restore, so it naturally starts blank like any other never-seen row;
+//   - an issue whose last load attempt FAILED (CommentError/DetailError
+//     set, loaded=false) -- also left blank, clearing the error and making
+//     it eligible for retry again, matching the pre-existing "a full
+//     reconcile clears errors" behavior (ab-6irx.1) rather than leaving a
+//     transient failure stuck forever just because content never changed.
+//
+// This is what makes a manual 'r' fast on a large repo: only issues that
+// actually changed (or previously failed) pay the reload cost again: every
+// other already-loaded issue's cache survives untouched.
+func restoreUnchangedIssues(
+	roots []*graph.Node,
+	oldComments map[string]commentState,
+	oldDetails map[string]detailState,
+	oldSignals map[string]issueChangeSignal,
+) {
+	var walk func([]*graph.Node)
+	walk = func(nodes []*graph.Node) {
+		for _, n := range nodes {
+			sig, hadSig := oldSignals[n.Issue.ID]
+			if cs, ok := oldComments[n.Issue.ID]; ok && cs.commentsLoaded &&
+				hadSig && sig.commentFingerprint == n.Issue.CommentFingerprint {
+				n.Issue.Comments = cs.comments
+				n.CommentsLoaded = true
+			}
+			if ds, ok := oldDetails[n.Issue.ID]; ok && ds.detailLoaded &&
+				hadSig && sig.updatedAt == n.Issue.UpdatedAt {
+				n.Issue.Description = ds.description
+				n.Issue.Design = ds.design
+				n.Issue.Notes = ds.notes
+				n.Issue.AcceptanceCriteria = ds.acceptanceCriteria
+				n.Issue.CloseReason = ds.closeReason
+				n.Issue.ExternalRef = ds.externalRef
+				n.Issue.DetailLoaded = true
+			}
+			walk(n.Children)
+		}
+	}
+	walk(roots)
+}
+
 // applyCommentsToNode sets freshly fetched comments on the matching node(s) and
 // marks them loaded, so a just-added comment shows immediately and is preserved
 // by collectCommentState/transferCommentState across the next refresh — without

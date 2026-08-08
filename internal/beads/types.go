@@ -79,4 +79,16 @@ type FullIssue struct {
 	// Notes, AcceptanceCriteria, CloseReason) and Comments have been loaded.
 	// Skeleton reads leave it false; the detail lazy-load sets it true.
 	DetailLoaded bool `json:"-"`
+	// CommentFingerprint is a cheap per-issue summary of the comments table
+	// ("<count>|<max created_at>"), stamped by a skeleton read (dolt backend
+	// only; see attachCommentFingerprints in dolt_delta.go) so a later
+	// reconcile can detect an external comment add/edit without reloading
+	// every issue's comments. Comments live in a separate table and don't
+	// bump UpdatedAt, so this is the signal internal/ui's targeted cache
+	// invalidation uses for the comment side (ab-6irx.6); UpdatedAt itself
+	// already covers the detail side (description/notes/etc. all live on
+	// the issues row). Left "" by backends that don't compute it (e.g.
+	// sqlite, whose Export already returns real comments so this signal is
+	// never needed there).
+	CommentFingerprint string `json:"-"`
 }

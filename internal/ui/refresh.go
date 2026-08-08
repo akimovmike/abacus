@@ -284,42 +284,31 @@ func (m *App) applyRefresh(newRoots []*graph.Node, newDigest map[string]string, 
 	state := m.captureState()
 	oldDigest := buildIssueDigest(m.roots)
 
-	// A Delta-capable client (currently only dolt) never needs the legacy
-	// full transfer below: an incremental Delta's merge already carries
-	// forward each unchanged issue's loaded Comments/DetailLoaded straight
-	// from the prevIssues snapshot startRefresh flattened before dispatch,
-	// and a deliberate full reconcile's Export always returns skeleton-only
-	// rows for everyone (Comments=nil, DetailLoaded=false) — precisely the
-	// invalidate-all-caches behavior design fold R02 wants, so leaving that
-	// stand IS the invalidation. Running the full transfer here as well
-	// would wrongly restore stale data onto an issue a reconcile or a Delta
-	// change-set just (correctly) invalidated.
-	//
-	// A non-Delta client (sqlite, mocks) keeps its pre-existing, unchanged
-	// behavior: preserve loaded comments/detail from old nodes to avoid
-	// flicker during refresh (ab-6irx.2 / T11) — without this, a dolt-shaped
-	// skeleton Export would blank out an already-loaded detail pane on
-	// every single auto-refresh tick.
+	// A Delta-capable client (currently only dolt) hits one of three shapes
+	// here: a DELTA tick (Delta's own merge already carries forward each
+	// unchanged issue's Comments/DetailLoaded, so only the Node-level error
+	// fields need help below); a RECONCILE (full Export always returns
+	// skeleton-only rows regardless of whether an issue changed, so the
+	// targeted restore below — restoreUnchangedIssues — is what keeps a
+	// manual 'r' fast on a large repo instead of force-reloading every
+	// already-loaded issue, ab-6irx.6); or a non-Delta client (sqlite,
+	// mocks), which keeps its pre-existing full transfer to avoid flicker on
+	// every auto-refresh tick (ab-6irx.2 / T11).
 	_, deltaCapable := m.client.(deltaClient)
-	// Collected whenever the state below will actually be used: always for a
-	// non-Delta client (full transfer), and for a Delta-capable client's
-	// DELTA tick only (narrow error-carry-through — see the transfer switch
-	// below for why). A Delta-capable client's RECONCILE skips this entirely:
-	// nothing here should survive it.
-	//
-	// The delta-tick case matters because CommentError/DetailError are
-	// Node-level fields, not part of beads.FullIssue, so Delta's merge
-	// cannot carry them forward the way it carries Comments/DetailLoaded.
-	// Without restoring them here, a persistently-failing fetch's exclusion
-	// from loadCommentsInBackground's retry sweep (needsCommentFetch skips
-	// CommentError != "") resets on every single DB-changed tick — an
-	// unbounded retry storm with no backoff, contending for the single dolt
-	// semaphore already strained by invalidate-all-on-reconcile.
-	var oldCommentState map[string]commentState
-	var oldDetailState map[string]detailState
-	if !deltaCapable || !reconcile {
-		oldCommentState = collectCommentState(m.roots)
-		oldDetailState = collectDetailState(m.roots)
+	targetedReconcile := deltaCapable && reconcile
+	// Collected unconditionally: the non-Delta path needs the full content
+	// for its transfer; a Delta tick needs only the Node-level error fields
+	// (CommentError/DetailError can't ride along in beads.FullIssue, so
+	// Delta's merge can't carry them — without restoring them here a
+	// persistently-failing fetch's retry-sweep exclusion would reset every
+	// tick, an unbounded retry storm); and a targeted reconcile needs the
+	// full content so restoreUnchangedIssues can selectively keep only
+	// issues that are both successfully loaded and content-unchanged.
+	oldCommentState := collectCommentState(m.roots)
+	oldDetailState := collectDetailState(m.roots)
+	var oldChangeSignals map[string]issueChangeSignal
+	if targetedReconcile {
+		oldChangeSignals = collectChangeSignals(m.roots)
 	}
 	m.roots = newRoots
 	// The UI's chosen sort is authoritative: refreshDataCmd always builds in
@@ -335,10 +324,20 @@ func (m *App) applyRefresh(newRoots []*graph.Node, newDigest map[string]string, 
 		transferDetailState(m.roots, oldDetailState)
 	case !reconcile:
 		// A full reconcile deliberately lets these clear (fresh retry is the
-		// intended behavior of invalidate-all); only a delta tick carries
-		// them through.
+		// intended behavior of a targeted reconcile's invalidated subset);
+		// only a delta tick carries them through.
 		transferCommentError(m.roots, oldCommentState)
 		transferDetailError(m.roots, oldDetailState)
+	case targetedReconcile:
+		// Restore comments/detail only for issues that were successfully
+		// loaded before AND whose content signal is unchanged; everything
+		// else (a changed issue, a brand new one, or a previously failed
+		// load) is left at the fresh skeleton's blank state. This is the
+		// perf fix (ab-6irx.6): a manual 'r' on a large repo no longer
+		// force-reloads every already-loaded issue, while an external
+		// comment/detail edit on an unchanged-looking issue is still caught
+		// (see restoreUnchangedIssues).
+		restoreUnchangedIssues(m.roots, oldCommentState, oldDetailState, oldChangeSignals)
 	}
 	if !newModTime.IsZero() {
 		m.lastDBModTime = newModTime

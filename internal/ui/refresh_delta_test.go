@@ -209,22 +209,26 @@ func TestForceRefreshAlwaysReconciles(t *testing.T) {
 	}
 }
 
-// TestCommentsSurviveDeltaTickButReloadAfterReconcile is the central
-// correctness test for this fold: a Delta tick must preserve an
-// already-loaded comment (via Delta's own merge, since the issue itself did
-// not change), while a subsequent full reconcile must invalidate it so it
-// re-loads fresh (design fold R02 / the #7 finding) rather than staying
-// stale forever.
-func TestCommentsSurviveDeltaTickButReloadAfterReconcile(t *testing.T) {
+// TestCommentsSurviveDeltaTickAndUnchangedReconcile is the central
+// correctness test for ab-6irx.6's targeted reconcile invalidation: a Delta
+// tick must preserve an already-loaded comment (via Delta's own merge,
+// since the issue itself did not change); AND a subsequent full reconcile
+// whose fresh read carries the SAME CommentFingerprint must ALSO preserve
+// it — this is the perf fix itself (the old behavior blanket-invalidated
+// every loaded comment on every reconcile; TestCommentsReloadOnReconcile
+// FingerprintChange below covers the case a reconcile SHOULD invalidate).
+func TestCommentsSurviveDeltaTickAndUnchangedReconcile(t *testing.T) {
 	client := newDeltaStubClient()
 	loadedComment := []beads.Comment{{ID: "1", Text: "real comment"}}
+	const fp = "1|2026-01-20T10:00:00Z"
 
 	app := &App{
 		client: client,
 		roots: []*graph.Node{{
 			Issue: beads.FullIssue{
 				ID: "ab-1", Title: "T", Status: "open", IssueType: "task",
-				Comments: loadedComment,
+				Comments:           loadedComment,
+				CommentFingerprint: fp,
 			},
 			CommentsLoaded: true,
 		}},
@@ -252,10 +256,15 @@ func TestCommentsSurviveDeltaTickButReloadAfterReconcile(t *testing.T) {
 	}
 
 	// Force the bounded cadence: the next refresh must be a full reconcile.
+	// Its fresh read carries the SAME fingerprint (no external comment
+	// change), so the loaded comment must survive -- the targeted-
+	// invalidation fix, as opposed to the old blanket invalidate-all.
 	app.deltaTicksSinceReconcile = reconcileEveryTicks
 	client.ExportFn = func(context.Context) ([]beads.FullIssue, error) {
-		// A real Export always returns skeleton-only rows: Comments nil.
-		return []beads.FullIssue{{ID: "ab-1", Title: "T", Status: "open", IssueType: "task"}}, nil
+		return []beads.FullIssue{{
+			ID: "ab-1", Title: "T", Status: "open", IssueType: "task",
+			CommentFingerprint: fp,
+		}}, nil
 	}
 	if !app.reconcileDue() {
 		t.Fatal("expected reconcileDue=true once the cadence threshold is hit")
@@ -276,9 +285,57 @@ func TestCommentsSurviveDeltaTickButReloadAfterReconcile(t *testing.T) {
 	if node == nil {
 		t.Fatal("expected ab-1 to survive the reconcile")
 	}
+	if !node.CommentsLoaded || len(node.Issue.Comments) != 1 || node.Issue.Comments[0].Text != "real comment" {
+		t.Fatalf("expected an unchanged-fingerprint reconcile to leave the loaded comment cached "+
+			"(targeted invalidation), got Comments=%+v CommentsLoaded=%v",
+			node.Issue.Comments, node.CommentsLoaded)
+	}
+}
+
+// TestCommentsReloadOnReconcileFingerprintChange is the flip side of
+// TestCommentsSurviveDeltaTickAndUnchangedReconcile: a full reconcile whose
+// fresh read carries a DIFFERENT CommentFingerprint (an external comment
+// add/edit a Delta tick's updated_at watermark would never catch, since
+// comments live in a separate table) must still invalidate the cached
+// comment so it reloads fresh -- the freshness guarantee a manual 'r' makes.
+func TestCommentsReloadOnReconcileFingerprintChange(t *testing.T) {
+	client := newDeltaStubClient()
+	loadedComment := []beads.Comment{{ID: "1", Text: "real comment"}}
+
+	app := &App{
+		client: client,
+		roots: []*graph.Node{{
+			Issue: beads.FullIssue{
+				ID: "ab-1", Title: "T", Status: "open", IssueType: "task",
+				Comments:           loadedComment,
+				CommentFingerprint: "1|2026-01-20T10:00:00Z",
+			},
+			CommentsLoaded: true,
+		}},
+	}
+
+	// A reconcile whose fresh read carries a bumped fingerprint (simulating
+	// an external comment add since the last read) must invalidate the
+	// cached comment.
+	client.ExportFn = func(context.Context) ([]beads.FullIssue, error) {
+		return []beads.FullIssue{{
+			ID: "ab-1", Title: "T", Status: "open", IssueType: "task",
+			CommentFingerprint: "2|2026-01-20T11:00:00Z",
+		}}, nil
+	}
+	msg := extractRefreshMsg(t, app.startRefresh(time.Now(), true))
+	if msg.err != nil {
+		t.Fatalf("reconcile: unexpected error: %v", msg.err)
+	}
+	app.applyRefresh(msg.roots, msg.digest, msg.dbModTime, msg.reconcile)
+
+	node := app.findNodeByID("ab-1")
+	if node == nil {
+		t.Fatal("expected ab-1 to survive the reconcile")
+	}
 	if node.CommentsLoaded || node.Issue.Comments != nil {
-		t.Fatalf("expected the reconcile to invalidate the cached comment (not a permanent wipe — "+
-			"the background loader re-fetches it), got Comments=%+v CommentsLoaded=%v",
+		t.Fatalf("expected a changed-fingerprint reconcile to invalidate the cached comment (not a "+
+			"permanent wipe — the background loader re-fetches it), got Comments=%+v CommentsLoaded=%v",
 			node.Issue.Comments, node.CommentsLoaded)
 	}
 }
@@ -323,6 +380,152 @@ func TestDetailSurvivesDeltaTick(t *testing.T) {
 	}
 }
 
+// TestDetailSurvivesReconcileWhenUpdatedAtUnchanged is the detail-side
+// counterpart of TestCommentsSurviveDeltaTickAndUnchangedReconcile: a full
+// reconcile whose fresh read carries the SAME UpdatedAt for an issue must
+// leave its already-loaded detail cached rather than force a reload
+// (ab-6irx.6).
+func TestDetailSurvivesReconcileWhenUpdatedAtUnchanged(t *testing.T) {
+	client := newDeltaStubClient()
+	const updatedAt = "2026-01-20T10:00:00Z"
+
+	app := &App{
+		client: client,
+		roots: []*graph.Node{{
+			Issue: beads.FullIssue{
+				ID: "ab-1", Title: "T", Status: "open", IssueType: "task",
+				UpdatedAt:    updatedAt,
+				Description:  "real description",
+				DetailLoaded: true,
+			},
+		}},
+	}
+
+	client.ExportFn = func(context.Context) ([]beads.FullIssue, error) {
+		return []beads.FullIssue{{
+			ID: "ab-1", Title: "T", Status: "open", IssueType: "task", UpdatedAt: updatedAt,
+		}}, nil
+	}
+	msg := extractRefreshMsg(t, app.startRefresh(time.Now(), true))
+	if msg.err != nil {
+		t.Fatalf("reconcile: unexpected error: %v", msg.err)
+	}
+	app.applyRefresh(msg.roots, msg.digest, msg.dbModTime, msg.reconcile)
+
+	node := app.findNodeByID("ab-1")
+	if node == nil {
+		t.Fatal("expected ab-1 to survive the reconcile")
+	}
+	if !node.Issue.DetailLoaded || node.Issue.Description != "real description" {
+		t.Fatalf("expected an unchanged-UpdatedAt reconcile to leave the loaded detail cached "+
+			"(targeted invalidation), got description=%q detailLoaded=%v",
+			node.Issue.Description, node.Issue.DetailLoaded)
+	}
+}
+
+// TestDetailReloadsOnReconcileUpdatedAtChange is the flip side of
+// TestDetailSurvivesReconcileWhenUpdatedAtUnchanged: a full reconcile whose
+// fresh read carries a bumped UpdatedAt (an external description/notes/
+// acceptance/close-reason edit) must invalidate the cached detail so it
+// reloads fresh.
+func TestDetailReloadsOnReconcileUpdatedAtChange(t *testing.T) {
+	client := newDeltaStubClient()
+
+	app := &App{
+		client: client,
+		roots: []*graph.Node{{
+			Issue: beads.FullIssue{
+				ID: "ab-1", Title: "T", Status: "open", IssueType: "task",
+				UpdatedAt:    "2026-01-20T10:00:00Z",
+				Description:  "stale description",
+				DetailLoaded: true,
+			},
+		}},
+	}
+
+	client.ExportFn = func(context.Context) ([]beads.FullIssue, error) {
+		return []beads.FullIssue{{
+			ID: "ab-1", Title: "T", Status: "open", IssueType: "task", UpdatedAt: "2026-01-20T11:00:00Z",
+		}}, nil
+	}
+	msg := extractRefreshMsg(t, app.startRefresh(time.Now(), true))
+	if msg.err != nil {
+		t.Fatalf("reconcile: unexpected error: %v", msg.err)
+	}
+	app.applyRefresh(msg.roots, msg.digest, msg.dbModTime, msg.reconcile)
+
+	node := app.findNodeByID("ab-1")
+	if node == nil {
+		t.Fatal("expected ab-1 to survive the reconcile")
+	}
+	if node.Issue.DetailLoaded || node.Issue.Description != "" {
+		t.Fatalf("expected a changed-UpdatedAt reconcile to invalidate the cached detail, "+
+			"got description=%q detailLoaded=%v", node.Issue.Description, node.Issue.DetailLoaded)
+	}
+}
+
+// TestReconcileInvalidatesOnlyChangedIssueOthersStayCached is the
+// multi-issue regression test for the whole point of ab-6irx.6: on a
+// reconcile touching several already-loaded issues, only the one whose
+// content actually changed pays the reload cost — every other issue's
+// loaded detail/comments survive untouched, which is what keeps a manual
+// 'r' fast on a large repo instead of blanket-invalidating everything.
+func TestReconcileInvalidatesOnlyChangedIssueOthersStayCached(t *testing.T) {
+	client := newDeltaStubClient()
+
+	app := &App{
+		client: client,
+		roots: []*graph.Node{
+			{Issue: beads.FullIssue{
+				ID: "ab-changed", Title: "T1", Status: "open", IssueType: "task",
+				UpdatedAt: "2026-01-20T10:00:00Z", Description: "old", DetailLoaded: true,
+				Comments: []beads.Comment{{ID: "1", Text: "c1"}}, CommentFingerprint: "1|old",
+			}, CommentsLoaded: true},
+			{Issue: beads.FullIssue{
+				ID: "ab-unchanged", Title: "T2", Status: "open", IssueType: "task",
+				UpdatedAt: "2026-01-20T09:00:00Z", Description: "kept", DetailLoaded: true,
+				Comments: []beads.Comment{{ID: "2", Text: "c2"}}, CommentFingerprint: "1|kept",
+			}, CommentsLoaded: true},
+		},
+	}
+
+	client.ExportFn = func(context.Context) ([]beads.FullIssue, error) {
+		return []beads.FullIssue{
+			{ID: "ab-changed", Title: "T1", Status: "open", IssueType: "task",
+				UpdatedAt: "2026-01-20T11:00:00Z", CommentFingerprint: "2|new"},
+			{ID: "ab-unchanged", Title: "T2", Status: "open", IssueType: "task",
+				UpdatedAt: "2026-01-20T09:00:00Z", CommentFingerprint: "1|kept"},
+		}, nil
+	}
+	msg := extractRefreshMsg(t, app.startRefresh(time.Now(), true))
+	if msg.err != nil {
+		t.Fatalf("reconcile: unexpected error: %v", msg.err)
+	}
+	app.applyRefresh(msg.roots, msg.digest, msg.dbModTime, msg.reconcile)
+
+	changed := app.findNodeByID("ab-changed")
+	if changed == nil {
+		t.Fatal("expected ab-changed to survive the reconcile")
+	}
+	if changed.Issue.DetailLoaded || changed.Issue.Description != "" || changed.CommentsLoaded || changed.Issue.Comments != nil {
+		t.Fatalf("expected ab-changed's detail and comment cache to be invalidated, got %+v (commentsLoaded=%v)",
+			changed.Issue, changed.CommentsLoaded)
+	}
+
+	unchanged := app.findNodeByID("ab-unchanged")
+	if unchanged == nil {
+		t.Fatal("expected ab-unchanged to survive the reconcile")
+	}
+	if !unchanged.Issue.DetailLoaded || unchanged.Issue.Description != "kept" {
+		t.Fatalf("expected ab-unchanged's detail cache to survive untouched, got description=%q detailLoaded=%v",
+			unchanged.Issue.Description, unchanged.Issue.DetailLoaded)
+	}
+	if !unchanged.CommentsLoaded || len(unchanged.Issue.Comments) != 1 || unchanged.Issue.Comments[0].Text != "c2" {
+		t.Fatalf("expected ab-unchanged's comment cache to survive untouched, got comments=%+v loaded=%v",
+			unchanged.Issue.Comments, unchanged.CommentsLoaded)
+	}
+}
+
 // TestCommentAndDetailErrorExcludedFromRetryAfterDeltaTickButClearOnReconcile
 // is the regression test for the retry-storm fix: CommentError/DetailError
 // are Node-level fields (not part of beads.FullIssue), so Delta's merge
@@ -331,7 +534,10 @@ func TestDetailSurvivesDeltaTick(t *testing.T) {
 // fetch's exclusion from the retry sweep would silently reset to "" on
 // every single delta tick, re-queuing it with no backoff. A delta tick must
 // carry the error through (still excluded); a full reconcile must let it
-// clear (fresh retry is the intended behavior of invalidate-all).
+// clear (fresh retry is the intended behavior of a targeted reconcile — see
+// restoreUnchangedIssues, which only restores a successfully-loaded and
+// content-unchanged issue's cache, so a previously-errored issue is always
+// left blank and therefore eligible for retry again).
 func TestCommentAndDetailErrorExcludedFromRetryAfterDeltaTickButClearOnReconcile(t *testing.T) {
 	client := newDeltaStubClient()
 	client.deltaFn = func(_ context.Context, prev []beads.FullIssue) ([]beads.FullIssue, error) {
