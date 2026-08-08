@@ -174,3 +174,38 @@ func TestDoltExportAndShow(t *testing.T) {
 		t.Fatalf("show=%v err=%v", shown, err)
 	}
 }
+
+func TestDoltDeltaUpsertAndTombstone(t *testing.T) {
+	prev := []FullIssue{
+		{ID: "ab-1", Title: "old", Status: "open", IssueType: "task", UpdatedAt: "2026-01-20T10:00:00Z"},
+		{ID: "ab-2", Title: "keep", Status: "open", IssueType: "task", UpdatedAt: "2026-01-20T09:00:00Z"},
+	}
+	c := newStubClient(t, map[string]string{
+		"HASHOF": `{"rows":[{"h":"snap2"}]}`,
+		// delta: ab-1 changed, ab-3 new, ab-2 tombstoned
+		"updated_at >=": `{"rows":[
+			{"id":"ab-1","title":"new","status":"open","issue_type":"task","priority":1,"created_at":"x","updated_at":"2026-01-20 11:00:00"},
+			{"id":"ab-3","title":"fresh","status":"open","issue_type":"task","priority":1,"created_at":"x","updated_at":"2026-01-20 12:00:00"},
+			{"id":"ab-2","title":"gone","status":"tombstone","issue_type":"task","priority":1,"created_at":"x","updated_at":"2026-01-20 12:00:00"}
+		]}`,
+		"FROM labels":       `{}`,
+		"FROM dependencies": `{}`,
+	})
+	got, err := c.Delta(context.Background(), prev)
+	if err != nil {
+		t.Fatal(err)
+	}
+	byID := map[string]FullIssue{}
+	for _, i := range got {
+		byID[i.ID] = i
+	}
+	if _, gone := byID["ab-2"]; gone {
+		t.Error("ab-2 tombstoned should be dropped")
+	}
+	if byID["ab-1"].Title != "new" {
+		t.Errorf("ab-1 not upserted: %q", byID["ab-1"].Title)
+	}
+	if _, ok := byID["ab-3"]; !ok {
+		t.Error("ab-3 new should be present")
+	}
+}
