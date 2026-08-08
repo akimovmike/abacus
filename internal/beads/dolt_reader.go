@@ -33,7 +33,7 @@ func NewDoltClient(beadsDir, database string, w Writer) (Client, error) {
 		return nil, err
 	}
 	return &doltClient{
-		r:         &doltRunner{dir: dir, run: execDolt, mu: &sync.Mutex{}},
+		r:         &doltRunner{dir: dir, run: execDolt, sem: make(chan struct{}, 1)},
 		refreshMu: &sync.Mutex{},
 		Writer:    w,
 	}, nil

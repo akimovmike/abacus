@@ -32,7 +32,7 @@ func newStubClient(t *testing.T, responses map[string]string) *doltClient {
 		}
 		return []byte(`{}`), nil
 	}
-	return &doltClient{r: &doltRunner{dir: "/x", run: run, mu: &sync.Mutex{}}, refreshMu: &sync.Mutex{}}
+	return &doltClient{r: &doltRunner{dir: "/x", run: run, sem: make(chan struct{}, 1)}, refreshMu: &sync.Mutex{}}
 }
 
 func TestDoltSkeletonAssembles(t *testing.T) {

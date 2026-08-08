@@ -9,7 +9,6 @@ import (
 	"path/filepath"
 	"regexp"
 	"strings"
-	"sync"
 	"syscall"
 	"time"
 )
@@ -71,6 +70,54 @@ const MinDoltVersion = "2.1.0"
 
 // doltQueryTimeout bounds every dolt sql invocation.
 const doltQueryTimeout = 30 * time.Second
+
+// doltLockBusyBackoffs are the delays between retry attempts when a dolt
+// sql invocation fails with a lock-busy error (see isDoltLockBusy). Up to
+// len(doltLockBusyBackoffs) retries are attempted -- i.e. up to
+// len(doltLockBusyBackoffs)+1 total dolt invocations -- all within the
+// query's doltQueryTimeout budget, and cut short by ctx cancellation.
+var doltLockBusyBackoffs = []time.Duration{50 * time.Millisecond, 150 * time.Millisecond, 300 * time.Millisecond}
+
+// doltLockBusyMarkers are case-insensitive substrings of a failed dolt sql
+// invocation's combined output that indicate the embedded store was
+// transiently locked by a concurrent dolt process (e.g. an external bd/br
+// write racing this read for the store's manifest) rather than a genuine
+// query failure.
+//
+// Verified empirically (2026-08-08, dolt 2.1.10): in a scratch dolt repo,
+// racing N concurrent `dolt sql -q "UPDATE ..."` processes against the same
+// local (non-server) database directory reliably produced this exact
+// message on the losers of the race to update the manifest:
+//
+//	error on line 1 for query UPDATE t SET v=v+1 WHERE id=1: cannot update
+//	manifest: database is read only
+//
+// (11 of 12 concurrent writers failed with this message in one run; the
+// remaining 1 won the race and succeeded.) The same stress test run with
+// concurrent *read* (SELECT) statements never reproduced this or any other
+// error (0 of 12 failures) -- doltRunner.query only ever issues reads, so
+// in practice this retry is a narrow safety net for the case where a read's
+// manifest refresh races a concurrent writer's manifest swap, rather than a
+// commonly-hit path. No other lock-busy wording (e.g. a generic "database
+// locked" message) was observed against this dolt version; if a future
+// dolt version phrases the same condition differently, this allowlist will
+// need a matching addition.
+var doltLockBusyMarkers = []string{
+	"cannot update manifest",
+	"database is read only",
+}
+
+// isDoltLockBusy reports whether out (the combined stdout+stderr of a
+// failed dolt sql invocation) matches a known lock-busy signature.
+func isDoltLockBusy(out []byte) bool {
+	lower := strings.ToLower(string(out))
+	for _, marker := range doltLockBusyMarkers {
+		if strings.Contains(lower, marker) {
+			return true
+		}
+	}
+	return false
+}
 
 // commandRunner executes a dolt subcommand and returns its combined output.
 // Tests inject a stub; execDolt shells out to the real dolt binary.
@@ -143,23 +190,50 @@ func checkDoltVersion(ctx context.Context, run commandRunner) error {
 type doltRunner struct {
 	dir string
 	run commandRunner
-	mu  *sync.Mutex
+	sem chan struct{} // buffered cap 1; acts as a ctx-aware mutex (see query)
 }
 
 // query runs sql against the dolt database and returns the decoded rows.
-// Calls are serialized via mu and bounded by doltQueryTimeout.
+//
+// The per-store lock (sem) is acquired only after the timeout context is
+// derived from ctx, and acquisition itself respects ctx.Done(): a caller
+// blocked waiting on a busy store returns ctx.Err() at the deadline instead
+// of blocking past it. A plain sync.Mutex.Lock() cannot be interrupted by
+// context cancellation, so a buffered (cap 1) channel is used as a
+// ctx-aware mutex instead (ab-6irx.5).
+//
+// A dolt invocation that fails with a lock-busy signature (isDoltLockBusy)
+// -- e.g. a concurrent external bd/br write racing this read for the
+// store's manifest -- is retried with backoff (doltLockBusyBackoffs) inside
+// the same timeout budget; any other error is returned immediately
+// (ab-6irx.4).
 func (r *doltRunner) query(ctx context.Context, sqlText string) ([]map[string]any, error) {
-	r.mu.Lock()
-	defer r.mu.Unlock()
-
 	ctx, cancel := context.WithTimeout(ctx, doltQueryTimeout)
 	defer cancel()
 
-	out, err := r.run(ctx, r.dir, "sql", "-q", sqlText, "-r", "json")
-	if err != nil {
-		return nil, fmt.Errorf("dolt sql failed (%s): %w", firstLine(out), err)
+	select {
+	case r.sem <- struct{}{}:
+	case <-ctx.Done():
+		return nil, ctx.Err()
 	}
-	return parseDoltRows(out)
+	defer func() { <-r.sem }()
+
+	var lastErr error
+	for attempt := 0; ; attempt++ {
+		out, err := r.run(ctx, r.dir, "sql", "-q", sqlText, "-r", "json")
+		if err == nil {
+			return parseDoltRows(out)
+		}
+		lastErr = fmt.Errorf("dolt sql failed (%s): %w", firstLine(out), err)
+		if attempt >= len(doltLockBusyBackoffs) || !isDoltLockBusy(out) {
+			return nil, lastErr
+		}
+		select {
+		case <-time.After(doltLockBusyBackoffs[attempt]):
+		case <-ctx.Done():
+			return nil, fmt.Errorf("%w (last dolt error: %v)", ctx.Err(), lastErr)
+		}
+	}
 }
 
 // firstLine returns the first line of b, or all of b if it has no newline.
@@ -174,7 +248,7 @@ func firstLine(b []byte) string {
 // pin subsequent reads to a consistent point via asOf.
 //
 // Note: concurrent refreshes are NOT coalesced at this runner layer; each
-// call serializes only via r.mu (one dolt invocation at a time). Single-flight
+// call serializes only via r.sem (one dolt invocation at a time). Single-flight
 // coalescing of concurrent refreshes is added at the reader layer in Task 8
 // (doltClient.refreshMu).
 func (r *doltRunner) snapshot(ctx context.Context) (string, error) {
