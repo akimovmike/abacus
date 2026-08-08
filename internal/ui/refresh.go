@@ -12,6 +12,7 @@ import (
 	"time"
 
 	"abacus/internal/beads"
+	"abacus/internal/debug"
 	"abacus/internal/graph"
 
 	tea "github.com/charmbracelet/bubbletea"
@@ -190,6 +191,14 @@ func (m *App) startRefresh(targetModTime time.Time, reconcile bool) tea.Cmd {
 		m.deltaTicksSinceReconcile = 0
 	} else {
 		m.deltaTicksSinceReconcile++
+	}
+	// Observable trail for the reconcile/delta split (a --debug watchdog
+	// signal, not just a test): if this ever silently regresses to "always
+	// reconcile" (retry-storm's invalidate-all firing every tick) or "never
+	// reconcile" (deltaTicksSinceReconcile stuck, staleness never caught),
+	// it shows up in ~/.abacus/debug.log without needing a live repro.
+	if _, ok := m.client.(deltaClient); ok {
+		debug.Logf("refresh dispatch: reconcile=%v deltaTicksSinceReconcile=%d", reconcile, m.deltaTicksSinceReconcile)
 	}
 	var prevIssues []beads.FullIssue
 	if !reconcile {
