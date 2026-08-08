@@ -27,6 +27,25 @@ const refreshTimeout = 30 * time.Second
 // data stays valid, so a single transient bd failure should stay silent.
 const refreshFailToastThreshold = 3
 
+// reconcileEveryTicks bounds the automatic full-reconcile cadence for a
+// Delta-capable backend (design fold R01): after this many consecutive
+// incremental Delta refreshes, the next auto-refresh tick runs a full Export
+// instead. A Delta refresh only sees issues whose own updated_at moved past
+// the watermark, so a label/dependency/comment-only external change (no
+// issue-row column touched) would otherwise never surface until something
+// else bumps that issue's updated_at. The periodic reconcile catches it.
+const reconcileEveryTicks = 10
+
+// deltaClient is implemented by Reader backends that can compute an
+// incremental refresh from a previously known issue set (currently only the
+// dolt reader, see internal/beads/dolt_reader.go). It is deliberately not
+// part of beads.Reader/Client: other backends (sqlite, mocks) simply don't
+// implement it, and fetchRefreshIssues/applyRefresh fall back to the
+// existing full-Export behavior, unchanged, for them.
+type deltaClient interface {
+	Delta(ctx context.Context, prev []beads.FullIssue) ([]beads.FullIssue, error)
+}
+
 // commentFetchTimeout bounds a single background `bd show` comment fetch. It is
 // applied per call (not once for the whole batch) so a large or slow load never
 // exceeds a shared deadline that would mass-kill every still-pending fetch. The
@@ -35,12 +54,18 @@ const refreshFailToastThreshold = 3
 // load is background and non-blocking.
 const commentFetchTimeout = 30 * time.Second
 
-func refreshDataCmd(client beads.Client, targetModTime time.Time) tea.Cmd {
+// refreshDataCmd fetches the next issue set (Delta or Export, see
+// fetchRefreshIssues) and rebuilds the tree from it. prevIssues is the
+// flattened current issue set, used as Delta's merge base; it is ignored
+// when reconcile forces a full Export.
+func refreshDataCmd(
+	client beads.Client, targetModTime time.Time, prevIssues []beads.FullIssue, reconcile bool,
+) tea.Cmd {
 	return func() tea.Msg {
 		ctx, cancel := context.WithTimeout(context.Background(), refreshTimeout)
 		defer cancel()
 
-		issues, err := client.Export(ctx)
+		issues, err := fetchRefreshIssues(ctx, client, prevIssues, reconcile)
 		if err != nil {
 			return refreshCompleteMsg{err: err}
 		}
@@ -57,6 +82,50 @@ func refreshDataCmd(client beads.Client, targetModTime time.Time) tea.Cmd {
 			dbModTime: targetModTime,
 		}
 	}
+}
+
+// fetchRefreshIssues chooses Delta or Export for one refresh tick: reconcile
+// forces a full Export (first load / forceRefresh / bounded cadence, fold
+// R01); otherwise it prefers an incremental Delta when the client supports
+// it, falling back to Export unchanged for any client without Delta
+// support (e.g. the sqlite backend).
+func fetchRefreshIssues(
+	ctx context.Context, client beads.Client, prevIssues []beads.FullIssue, reconcile bool,
+) ([]beads.FullIssue, error) {
+	if !reconcile {
+		if dc, ok := client.(deltaClient); ok {
+			return dc.Delta(ctx, prevIssues)
+		}
+	}
+	return client.Export(ctx)
+}
+
+// flattenIssues walks the tree and returns one beads.FullIssue per unique
+// id, suitable as Delta's prev argument. A node may appear more than once
+// when it has multiple parents (multi-parent support, see graph.TreeRow),
+// so dedup by id is required to hand Delta exactly the current known issue
+// set, not a multiplied one.
+func flattenIssues(roots []*graph.Node) []beads.FullIssue {
+	seen := make(map[string]beads.FullIssue)
+	var walk func([]*graph.Node)
+	walk = func(nodes []*graph.Node) {
+		for _, n := range nodes {
+			if n == nil {
+				continue
+			}
+			if _, ok := seen[n.Issue.ID]; !ok {
+				seen[n.Issue.ID] = n.Issue
+			}
+			walk(n.Children)
+		}
+	}
+	walk(roots)
+
+	out := make([]beads.FullIssue, 0, len(seen))
+	for _, iss := range seen {
+		out = append(out, iss)
+	}
+	return out
 }
 
 func (m *App) checkDBForChanges() tea.Cmd {
@@ -83,18 +152,47 @@ func (m *App) checkDBForChanges() tea.Cmd {
 		return nil
 	}
 
-	return m.startRefresh(modTime)
+	return m.startRefresh(modTime, m.reconcileDue())
 }
 
-func (m *App) startRefresh(targetModTime time.Time) tea.Cmd {
+// reconcileDue reports whether the upcoming auto-refresh tick should run a
+// full Export reconcile instead of an incremental Delta. A client with no
+// Delta support has no incremental path at all, so it always "reconciles"
+// via Export — exactly its pre-existing behavior, unchanged. A Delta-capable
+// client reconciles once every reconcileEveryTicks delta refreshes (bounded
+// cadence, fold R01).
+func (m *App) reconcileDue() bool {
+	if _, ok := m.client.(deltaClient); !ok {
+		return true
+	}
+	return m.deltaTicksSinceReconcile >= reconcileEveryTicks
+}
+
+// startRefresh dispatches one refresh. reconcile forces a full Export and
+// resets the bounded-cadence counter; otherwise it attempts an incremental
+// Delta (fetchRefreshIssues falls back to Export for a non-Delta client)
+// seeded with the current tree flattened into prevIssues.
+func (m *App) startRefresh(targetModTime time.Time, reconcile bool) tea.Cmd {
 	if m.refreshInFlight {
 		return nil
 	}
 	m.refreshInFlight = true
 	m.lastAttemptedModTime = targetModTime
-	return tea.Batch(m.spinner.Tick, refreshDataCmd(m.client, targetModTime))
+	if reconcile {
+		m.deltaTicksSinceReconcile = 0
+	} else {
+		m.deltaTicksSinceReconcile++
+	}
+	var prevIssues []beads.FullIssue
+	if !reconcile {
+		prevIssues = flattenIssues(m.roots)
+	}
+	return tea.Batch(m.spinner.Tick, refreshDataCmd(m.client, targetModTime, prevIssues, reconcile))
 }
 
+// forceRefresh always runs a full Export reconcile (user 'r' / a
+// write-triggered refresh, fold R01): callers just changed data via a
+// write, so a full re-sync — not a Delta guess — is the correct read here.
 func (m *App) forceRefresh() tea.Cmd {
 	var modTime time.Time
 	if m.dbPath != "" {
@@ -102,7 +200,7 @@ func (m *App) forceRefresh() tea.Cmd {
 			modTime = latest
 		}
 	}
-	return m.startRefresh(modTime)
+	return m.startRefresh(modTime, true)
 }
 
 func (m *App) latestDBModTime() (time.Time, error) {
@@ -169,12 +267,29 @@ func (m *App) applyRefresh(newRoots []*graph.Node, newDigest map[string]string, 
 	state := m.captureState()
 	oldDigest := buildIssueDigest(m.roots)
 
-	// Preserve loaded comments/detail from old nodes to avoid flicker during
-	// refresh: Export always returns skeleton-only nodes for the dolt
-	// backend (DetailLoaded=false, Comments=nil), so without this every
-	// auto-refresh tick would blank out an already-loaded detail pane.
-	oldCommentState := collectCommentState(m.roots)
-	oldDetailState := collectDetailState(m.roots)
+	// A Delta-capable client (currently only dolt) never needs the legacy
+	// transfer below: an incremental Delta's merge already carries forward
+	// each unchanged issue's loaded Comments/DetailLoaded straight from the
+	// prevIssues snapshot startRefresh flattened before dispatch, and a
+	// deliberate full reconcile's Export always returns skeleton-only rows
+	// for everyone (Comments=nil, DetailLoaded=false) — precisely the
+	// invalidate-all-caches behavior design fold R02 wants, so leaving that
+	// stand IS the invalidation. Running the transfer here as well would
+	// wrongly restore stale data onto an issue a reconcile or a Delta
+	// change-set just (correctly) invalidated.
+	//
+	// A non-Delta client (sqlite, mocks) keeps its pre-existing, unchanged
+	// behavior: preserve loaded comments/detail from old nodes to avoid
+	// flicker during refresh (ab-6irx.2 / T11) — without this, a dolt-shaped
+	// skeleton Export would blank out an already-loaded detail pane on
+	// every single auto-refresh tick.
+	_, deltaCapable := m.client.(deltaClient)
+	var oldCommentState map[string]commentState
+	var oldDetailState map[string]detailState
+	if !deltaCapable {
+		oldCommentState = collectCommentState(m.roots)
+		oldDetailState = collectDetailState(m.roots)
+	}
 	m.roots = newRoots
 	// The UI's chosen sort is authoritative: refreshDataCmd always builds in
 	// Default order, so for a custom sort we re-apply the active spec here before
@@ -183,8 +298,10 @@ func (m *App) applyRefresh(newRoots []*graph.Node, newDigest map[string]string, 
 	if m.sortSpec.Key != graph.SortDefault {
 		graph.ApplySort(m.roots, m.sortSpec)
 	}
-	transferCommentState(m.roots, oldCommentState)
-	transferDetailState(m.roots, oldDetailState)
+	if !deltaCapable {
+		transferCommentState(m.roots, oldCommentState)
+		transferDetailState(m.roots, oldDetailState)
+	}
 	if !newModTime.IsZero() {
 		m.lastDBModTime = newModTime
 	}

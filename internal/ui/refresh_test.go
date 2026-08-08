@@ -259,7 +259,7 @@ func TestDoltShapedCommentsSurviveRefresh(t *testing.T) {
 		CommentsLoaded: true,
 	}}
 
-	result := refreshDataCmd(client, time.Time{})()
+	result := refreshDataCmd(client, time.Time{}, nil, true)()
 	msg, ok := result.(refreshCompleteMsg)
 	if !ok || msg.err != nil {
 		t.Fatalf("refreshDataCmd: %#v", result)

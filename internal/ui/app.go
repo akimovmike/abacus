@@ -165,6 +165,12 @@ type App struct {
 	lastAttemptedModTime time.Time
 	lastRefreshStats     string
 	refreshInFlight      bool
+	// deltaTicksSinceReconcile counts consecutive incremental Delta refreshes
+	// since the last full Export reconcile, for a Delta-capable client
+	// (reconcileDue, fold R01). Reset to 0 by any reconcile (forceRefresh or
+	// the bounded cadence itself); irrelevant for a non-Delta client, which
+	// always reconciles.
+	deltaTicksSinceReconcile int
 	// commentLoadInFlight guards against overlapping background comment loads,
 	// which otherwise pile up under frequent refreshes and exhaust the per-load
 	// timeout, mass-killing in-flight bd show processes.

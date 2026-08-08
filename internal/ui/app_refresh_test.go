@@ -195,7 +195,7 @@ func TestRefreshSkipsBackgroundFetchForExportedComments(t *testing.T) {
 		}, nil
 	}
 
-	msg := extractRefreshMsg(t, refreshDataCmd(mock, time.Now()))
+	msg := extractRefreshMsg(t, refreshDataCmd(mock, time.Now(), nil, true))
 	if msg.err != nil {
 		t.Fatalf("refreshDataCmd returned error: %v", msg.err)
 	}
