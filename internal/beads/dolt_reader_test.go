@@ -5,6 +5,7 @@ import (
 	"strings"
 	"sync"
 	"testing"
+	"time"
 )
 
 func newStubClient(t *testing.T, responses map[string]string) *doltClient {
@@ -207,5 +208,84 @@ func TestDoltDeltaUpsertAndTombstone(t *testing.T) {
 	}
 	if _, ok := byID["ab-3"]; !ok {
 		t.Error("ab-3 new should be present")
+	}
+}
+
+func TestCapToNow(t *testing.T) {
+	future := time.Now().UTC().Add(48 * time.Hour).Format(time.RFC3339)
+	if got := capToNow(future); got == future {
+		t.Errorf("capToNow(%q) = %q, want capped below the future value", future, got)
+	}
+	past := "2020-01-01T00:00:00Z"
+	if got := capToNow(past); got != past {
+		t.Errorf("capToNow(%q) = %q, want unchanged", past, got)
+	}
+}
+
+func TestMaxUpdatedAtIgnoresTombstones(t *testing.T) {
+	issues := []FullIssue{
+		{ID: "ab-1", Status: "open", UpdatedAt: "2026-01-20T10:00:00Z"},
+		{ID: "ab-2", Status: "tombstone", UpdatedAt: "2026-01-20T23:00:00Z"},
+	}
+	if got := maxUpdatedAt(issues); got != "2026-01-20T10:00:00Z" {
+		t.Errorf("maxUpdatedAt=%q, want ab-1's timestamp (tombstone ignored)", got)
+	}
+}
+
+func TestWmToDolt(t *testing.T) {
+	got, err := wmToDolt("2026-01-20T10:00:00Z")
+	if err != nil || got != "2026-01-20 10:00:00" {
+		t.Fatalf("got %q err=%v", got, err)
+	}
+	if _, err := wmToDolt("not-a-time"); err == nil {
+		t.Fatal("expected error for unparsable watermark")
+	}
+}
+
+func TestDateTimeLiteral(t *testing.T) {
+	lit, err := dateTimeLiteral("2026-01-20 10:00:00")
+	if err != nil || lit != "'2026-01-20 10:00:00'" {
+		t.Fatalf("got %q err=%v", lit, err)
+	}
+	if _, err := dateTimeLiteral("2026-01-20 10:00:00'; DROP TABLE issues; --"); err == nil {
+		t.Fatal("expected reject for malformed/injection datetime")
+	}
+}
+
+// TestDoltDeltaFallsBackToFullReadOnUnparsableWatermark exercises Delta's
+// defensive fallback: a watermark that sorts lexicographically before "now"
+// (so capToNow leaves it alone) but isn't valid RFC3339 (dolt's own space
+// form, missing the "T"/"Z") must fail wmToDolt and fall back to a full
+// skeletonWhere read rather than sending a broken SQL comparison.
+func TestDoltDeltaFallsBackToFullReadOnUnparsableWatermark(t *testing.T) {
+	prev := []FullIssue{
+		{ID: "ab-1", Status: "open", UpdatedAt: "2026-01-20 10:00:00"},
+	}
+	c := newStubClient(t, map[string]string{
+		"HASHOF":      `{"rows":[{"h":"snap4"}]}`,
+		"FROM issues": `{"rows":[{"id":"ab-9","title":"full","status":"open","issue_type":"task","priority":1,"created_at":"x","updated_at":"2026-01-20 12:00:00"}]}`,
+	})
+	got, err := c.Delta(context.Background(), prev)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(got) != 1 || got[0].ID != "ab-9" {
+		t.Fatalf("expected fallback to full skeleton read, got %v", got)
+	}
+}
+
+// TestDoltDeltaNoBaselineIsFullRead exercises Delta with an empty prev
+// (no watermark): it must behave like a full skeleton read, not error.
+func TestDoltDeltaNoBaselineIsFullRead(t *testing.T) {
+	c := newStubClient(t, map[string]string{
+		"HASHOF":      `{"rows":[{"h":"snap5"}]}`,
+		"FROM issues": `{"rows":[{"id":"ab-1","title":"T","status":"open","issue_type":"task","priority":1,"created_at":"x","updated_at":"2026-01-20 12:00:00"}]}`,
+	})
+	got, err := c.Delta(context.Background(), nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(got) != 1 || got[0].ID != "ab-1" {
+		t.Fatalf("expected full read with one issue, got %v", got)
 	}
 }
