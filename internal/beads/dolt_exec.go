@@ -2,10 +2,15 @@ package beads
 
 import (
 	"bytes"
+	"context"
 	"encoding/json"
 	"fmt"
+	"os/exec"
+	"path/filepath"
 	"regexp"
 	"strings"
+	"sync"
+	"syscall"
 	"time"
 )
 
@@ -63,4 +68,107 @@ func normalizeDoltTime(s string) string {
 		}
 	}
 	return s // leave as-is if unrecognized
+}
+
+// MinDoltVersion is the minimum supported Dolt CLI version.
+const MinDoltVersion = "2.1.0"
+
+// doltQueryTimeout bounds every dolt sql invocation.
+const doltQueryTimeout = 30 * time.Second
+
+// commandRunner executes a dolt subcommand and returns its combined output.
+// Tests inject a stub; execDolt shells out to the real dolt binary.
+type commandRunner func(ctx context.Context, dir string, args ...string) ([]byte, error)
+
+// execDolt runs the real dolt binary in dir as its own process group so a
+// context timeout/cancellation kills the whole group, not just the parent
+// process.
+func execDolt(ctx context.Context, dir string, args ...string) ([]byte, error) {
+	cmd := exec.CommandContext(ctx, "dolt", args...) //nolint:gosec // G204: CLI wrapper intentionally shells out to dolt command
+	cmd.Dir = dir
+	cmd.SysProcAttr = &syscall.SysProcAttr{Setpgid: true}
+	cmd.Cancel = func() error {
+		return syscall.Kill(-cmd.Process.Pid, syscall.SIGKILL)
+	}
+	return cmd.CombinedOutput()
+}
+
+// resolveDoltDir returns the absolute embedded-Dolt database directory for
+// database under beadsDir (<beadsDir>/embeddeddolt/<database>), rejecting
+// path traversal and symlinks that escape beadsDir.
+func resolveDoltDir(beadsDir, database string) (string, error) {
+	base, err := filepath.Abs(beadsDir)
+	if err != nil {
+		return "", fmt.Errorf("resolve beads dir: %w", err)
+	}
+	// Resolve beadsDir itself through any symlinks (e.g. macOS /var ->
+	// /private/var) so the escape check below compares two paths that went
+	// through the same normalization, not a resolved child against a raw parent.
+	realBase, err := filepath.EvalSymlinks(base)
+	if err != nil {
+		return "", fmt.Errorf("resolve beads dir: %w", err)
+	}
+	dir := filepath.Join(base, "embeddeddolt", database)
+	real, err := filepath.EvalSymlinks(dir)
+	if err != nil {
+		return "", fmt.Errorf("dolt dir not found: %w", err)
+	}
+	rel, err := filepath.Rel(realBase, real)
+	if err != nil || rel == ".." || strings.HasPrefix(rel, ".."+string(filepath.Separator)) {
+		return "", fmt.Errorf("dolt dir %q escapes workspace %q", real, realBase)
+	}
+	return real, nil
+}
+
+// checkDoltVersion verifies that the dolt CLI reachable via run satisfies
+// MinDoltVersion.
+func checkDoltVersion(ctx context.Context, run commandRunner) error {
+	out, err := run(ctx, "", "version")
+	if err != nil {
+		return fmt.Errorf("dolt not available: %w", err)
+	}
+	got, _, err := parseSemver(string(out))
+	if err != nil {
+		return fmt.Errorf("parse dolt version: %w", err)
+	}
+	minVersion, _, err := parseSemver(MinDoltVersion)
+	if err != nil {
+		return fmt.Errorf("parse minimum dolt version: %w", err)
+	}
+	if got.compare(minVersion) < 0 {
+		return fmt.Errorf("dolt %s below minimum %s", strings.TrimSpace(string(out)), MinDoltVersion)
+	}
+	return nil
+}
+
+// doltRunner serializes dolt sql invocations against a single embedded
+// database directory.
+type doltRunner struct {
+	dir string
+	run commandRunner
+	mu  *sync.Mutex
+}
+
+// query runs sql against the dolt database and returns the decoded rows.
+// Calls are serialized via mu and bounded by doltQueryTimeout.
+func (r *doltRunner) query(ctx context.Context, sqlText string) ([]map[string]any, error) {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+
+	ctx, cancel := context.WithTimeout(ctx, doltQueryTimeout)
+	defer cancel()
+
+	out, err := r.run(ctx, r.dir, "sql", "-q", sqlText, "-r", "json")
+	if err != nil {
+		return nil, fmt.Errorf("dolt sql failed (%s): %w", firstLine(out), err)
+	}
+	return parseDoltRows(out)
+}
+
+// firstLine returns the first line of b, or all of b if it has no newline.
+func firstLine(b []byte) string {
+	if i := bytes.IndexByte(b, '\n'); i >= 0 {
+		return string(b[:i])
+	}
+	return string(b)
 }
