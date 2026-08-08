@@ -255,7 +255,7 @@ func TestIsMigrateGateErrorDetectsMarkers(t *testing.T) {
 	}{
 		{"refusing-to-auto-apply", errors.New("bd update: refusing to auto-apply migration"), true},
 		{"env-var-marker", errors.New("set BD_ALLOW_REMOTE_MIGRATE=1 to proceed"), true},
-		{"warning-marker", errors.New("Warning: schema drift detected"), true},
+		{"bare-warning-not-a-marker", errors.New("Warning: schema drift detected"), false},
 		{"unrelated-error", errors.New("bd update: issue not found"), false},
 		{"nil-error", nil, false},
 	}

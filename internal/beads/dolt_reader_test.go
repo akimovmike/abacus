@@ -110,6 +110,29 @@ func TestDoltSkeletonRejectsBlankRequiredPerRow(t *testing.T) {
 	}
 }
 
+// TestValidateSkeletonNotPreloadedRejectsNonNilComments is the prod runtime
+// guard for ab-6irx.2 firing directly: if a future edit to skeletonWhere
+// reintroduces a non-nil Comments placeholder, this must fail loudly at
+// read time (see validateSkeletonNotPreloaded's doc comment) rather than
+// silently defeating markExportedCommentsLoaded/transferCommentState again.
+func TestValidateSkeletonNotPreloadedRejectsNonNilComments(t *testing.T) {
+	if err := validateSkeletonNotPreloaded(FullIssue{ID: "ab-1", Comments: []Comment{}}); err == nil {
+		t.Fatal("expected an error for a skeleton row with non-nil Comments")
+	}
+}
+
+func TestValidateSkeletonNotPreloadedRejectsDetailLoaded(t *testing.T) {
+	if err := validateSkeletonNotPreloaded(FullIssue{ID: "ab-1", DetailLoaded: true}); err == nil {
+		t.Fatal("expected an error for a skeleton row with DetailLoaded=true")
+	}
+}
+
+func TestValidateSkeletonNotPreloadedAllowsGenuineSkeletonRow(t *testing.T) {
+	if err := validateSkeletonNotPreloaded(FullIssue{ID: "ab-1"}); err != nil {
+		t.Fatalf("unexpected error for a genuine skeleton row: %v", err)
+	}
+}
+
 func TestStrHelper(t *testing.T) {
 	if got := str("hello"); got != "hello" {
 		t.Errorf("str(string)=%q", got)
@@ -176,6 +199,49 @@ func TestDoltExportAndShow(t *testing.T) {
 	shown, err := c.Show(context.Background(), []string{"ab-1"})
 	if err != nil || len(shown) != 1 || !shown[0].DetailLoaded || shown[0].Description != "D" {
 		t.Fatalf("show=%v err=%v", shown, err)
+	}
+}
+
+// TestDoltSkeletonLeavesCommentsNil guards against ab-6irx.2: a skeleton row
+// must leave Comments nil (not a non-nil empty slice) so internal/ui's
+// markExportedCommentsLoaded (Comments != nil => loaded) does not mark every
+// dolt-backed issue's comments as already loaded before any real fetch runs
+// — which previously caused transferCommentState's skip-guard to discard
+// genuinely-loaded comments on every subsequent refresh.
+func TestDoltSkeletonLeavesCommentsNil(t *testing.T) {
+	c := newStubClient(t, map[string]string{
+		"FROM issues": `{"rows":[{"id":"ab-1","title":"T","status":"open","issue_type":"task","priority":2,"created_by":"Al","created_at":"2026-01-20 18:53:52","updated_at":"2026-01-20 18:53:52"}]}`,
+	})
+	got, err := c.skeleton(context.Background(), "")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(got) != 1 {
+		t.Fatalf("issues=%v", got)
+	}
+	if got[0].Comments != nil {
+		t.Fatalf("skeleton must leave Comments nil (not a placeholder empty slice), got %#v", got[0].Comments)
+	}
+}
+
+// TestDoltLoadDetailReturnsNonNilCommentsForZeroRows confirms the flip side:
+// once a real detail load runs, Comments becomes non-nil even when the issue
+// has zero comments, so it reads as "loaded, confirmed empty" rather than
+// "not yet loaded".
+func TestDoltLoadDetailReturnsNonNilCommentsForZeroRows(t *testing.T) {
+	c := newStubClient(t, map[string]string{
+		"description,design": `{"rows":[{"id":"ab-1","description":"D"}]}`,
+		"FROM comments":      `{}`,
+	})
+	iss := &FullIssue{ID: "ab-1"}
+	if err := c.loadDetail(context.Background(), "", iss); err != nil {
+		t.Fatal(err)
+	}
+	if iss.Comments == nil {
+		t.Fatal("expected loadDetail to leave Comments non-nil even with zero comment rows")
+	}
+	if len(iss.Comments) != 0 {
+		t.Fatalf("expected zero comments, got %v", iss.Comments)
 	}
 }
 

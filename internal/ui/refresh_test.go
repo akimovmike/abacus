@@ -1,7 +1,9 @@
 package ui
 
 import (
+	"context"
 	"testing"
+	"time"
 
 	"abacus/internal/beads"
 	"abacus/internal/graph"
@@ -226,6 +228,54 @@ func TestCommentStatePreservedAcrossRefresh(t *testing.T) {
 	}
 	if refreshedRoots[0].Issue.Comments[0].Text != "comment A" {
 		t.Fatalf("expected 'comment A', got %q", refreshedRoots[0].Issue.Comments[0].Text)
+	}
+}
+
+// TestDoltShapedCommentsSurviveRefresh guards against ab-6irx.2, exercising
+// the real refreshDataCmd -> applyRefresh path a live auto-refresh/
+// forceRefresh takes (not just the collect/transfer helpers in isolation).
+// The dolt skeleton (post-fix, internal/beads/dolt_reader.go) leaves
+// Comments nil for every row until a real Show/Comments load runs. Before
+// the fix, dolt's skeleton set Comments to a non-nil empty slice, which made
+// markExportedCommentsLoaded (data.go) mark every dolt issue "already
+// loaded" on every single Export, and transferCommentState's skip-guard
+// then discarded genuinely-loaded comments on the very next refresh —
+// silently defeating the "comment survives refresh" guarantee (ab-j4pi.2)
+// for the dolt backend on virtually every write.
+func TestDoltShapedCommentsSurviveRefresh(t *testing.T) {
+	client := beads.NewMockClient()
+	client.ExportFn = func(context.Context) ([]beads.FullIssue, error) {
+		// dolt-shaped skeleton row: Comments intentionally nil (not yet loaded).
+		return []beads.FullIssue{{ID: "ab-1", Title: "T", Status: "open", IssueType: "task"}}, nil
+	}
+
+	app := &App{client: client}
+	// A prior Show()/comment-add already loaded real comments for ab-1.
+	app.roots = []*graph.Node{{
+		Issue: beads.FullIssue{
+			ID:       "ab-1",
+			Comments: []beads.Comment{{ID: "1", Text: "real comment"}},
+		},
+		CommentsLoaded: true,
+	}}
+
+	result := refreshDataCmd(client, time.Time{})()
+	msg, ok := result.(refreshCompleteMsg)
+	if !ok || msg.err != nil {
+		t.Fatalf("refreshDataCmd: %#v", result)
+	}
+
+	app.applyRefresh(msg.roots, msg.digest, msg.dbModTime)
+
+	node := app.findNodeByID("ab-1")
+	if node == nil {
+		t.Fatal("expected ab-1 to survive the refresh")
+	}
+	if !node.CommentsLoaded {
+		t.Fatal("expected CommentsLoaded to remain true after refresh")
+	}
+	if len(node.Issue.Comments) != 1 || node.Issue.Comments[0].Text != "real comment" {
+		t.Fatalf("expected the real comment to survive the refresh, got %v", node.Issue.Comments)
 	}
 }
 

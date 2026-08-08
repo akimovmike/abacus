@@ -168,9 +168,22 @@ func (c *doltClient) skeletonWhere(
 			Labels:       []string{},
 			Dependencies: []Dependency{},
 			Dependents:   []Dependent{},
-			Comments:     []Comment{},
+			// Comments is deliberately left nil (not []Comment{}): nil is the
+			// "not yet loaded" signal internal/ui's markExportedCommentsLoaded
+			// and applyLoadedComment rely on (Comments != nil => loaded),
+			// matching bd_sqlite.go's loadBdComments convention. loadDetail
+			// and Comments() below always return a non-nil slice (even for
+			// zero rows, via make([]Comment, 0, ...)), so once real data is
+			// fetched the signal flips correctly. Setting a non-nil empty
+			// placeholder here made every dolt skeleton row look "already
+			// loaded" to the UI layer: markExportedCommentsLoaded fired
+			// immediately, and transferCommentState's skip-guard then
+			// discarded genuinely-loaded comments on every refresh (ab-6irx.2).
 		}
 		if err := validateRequired(iss); err != nil {
+			return nil, err
+		}
+		if err := validateSkeletonNotPreloaded(iss); err != nil {
 			return nil, err
 		}
 		byID[iss.ID] = &iss
@@ -310,6 +323,24 @@ func validateRequired(iss FullIssue) error {
 		return appErrors.New(appErrors.CodeInvariant,
 			fmt.Sprintf("dolt row missing required field(s): id=%q title=%q status=%q issue_type=%q",
 				iss.ID, iss.Title, iss.Status, iss.IssueType), nil)
+	}
+	return nil
+}
+
+// validateSkeletonNotPreloaded is a production runtime guard (not just a
+// test) against ab-6irx.2 regressing: a skeleton row must leave
+// Comments==nil and DetailLoaded==false. internal/ui's
+// markExportedCommentsLoaded treats Comments!=nil as "already loaded" and
+// transferCommentState then discards genuinely-loaded comments on the very
+// next refresh — exactly what happened when this constructor used to set
+// Comments: []Comment{} unconditionally. If a future edit reintroduces a
+// non-nil placeholder (or sets DetailLoaded early) here, this fails loudly
+// at read time instead of silently corrupting the UI's comment/detail cache.
+func validateSkeletonNotPreloaded(iss FullIssue) error {
+	if iss.Comments != nil || iss.DetailLoaded {
+		return appErrors.New(appErrors.CodeInvariant,
+			fmt.Sprintf("dolt skeleton row %q must not be pre-marked loaded: comments=%v detailLoaded=%v (regresses ab-6irx.2)",
+				iss.ID, iss.Comments, iss.DetailLoaded), nil)
 	}
 	return nil
 }

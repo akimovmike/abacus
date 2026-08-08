@@ -15,10 +15,15 @@ import (
 // contract. bd's CLI output reaches here via CLIError.Output (see
 // internal/beads/errors.go), which formatCommandError embeds directly into
 // the error text these markers are matched against.
+//
+// A bare "Warning:" marker was deliberately dropped (round-1 review): bd can
+// print unrelated warnings on a failed write, and matching on that alone
+// would show the actionable-but-wrong migrate-gate toast instead of the real
+// error, burying useful information. Both remaining markers are specific
+// enough to bd's migrate-gate wording to be unambiguous on their own.
 var bdMigrateGateMarkers = []string{
 	"refusing to auto-apply",
 	"BD_ALLOW_REMOTE_MIGRATE",
-	"Warning:",
 }
 
 // migrateGateToastMessage is the actionable message shown instead of the
