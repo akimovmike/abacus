@@ -34,6 +34,33 @@ func TestSelectingSkeletonIssueTriggersDetailLoad(t *testing.T) {
 	}
 }
 
+// TestSelectingSkeletonIssueTriggersDetailLoadWithEmptyCommentsSlice locks in
+// the task-11 live-verification bug: the real dolt skeleton() initializes
+// every issue's Comments to a non-nil-but-empty []Comment{} (dolt_reader.go),
+// not nil. An earlier version of this trigger used "Comments != nil" as a
+// stand-in signal for "already loaded" (mirroring markExportedCommentsLoaded),
+// which misfired on this exact shape and marked every dolt issue
+// DetailLoaded=true before any Show() ever ran, leaving the detail pane
+// permanently blank. The fix relies solely on the real DetailLoaded field.
+func TestSelectingSkeletonIssueTriggersDetailLoadWithEmptyCommentsSlice(t *testing.T) {
+	node := &graph.Node{Issue: beads.FullIssue{
+		ID:       "ab-1",
+		Title:    "Skeleton only",
+		Comments: []beads.Comment{}, // non-nil, empty — the real dolt skeleton() shape
+	}}
+	app := &App{
+		ShowDetails: true,
+		visibleRows: nodesToRows(node),
+		client:      beads.NewMockClient(),
+	}
+
+	cmd := app.maybeTriggerDetailLoad()
+
+	if cmd == nil {
+		t.Fatal("expected a detail-load command even when Comments is a non-nil empty slice")
+	}
+}
+
 func TestDetailLoadSkippedWhenAlreadyLoaded(t *testing.T) {
 	node := &graph.Node{Issue: beads.FullIssue{ID: "ab-1", DetailLoaded: true}}
 	app := &App{
