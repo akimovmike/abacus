@@ -202,6 +202,68 @@ func TestDoltExportAndShow(t *testing.T) {
 	}
 }
 
+// TestDoltShowIsTargetedNotFullScan is the regression guard for ab-6irx.3:
+// Show must query issues/labels/dependencies scoped to the requested ids
+// (an `id IN (...)` / `issue_id IN (...)` / `depends_on_issue_id IN (...)`
+// clause) instead of skeleton's unconditional full-table scan. It captures
+// every SQL statement the stub runner receives and asserts the
+// skeleton-shaped issues query, the labels query, and the dependencies
+// query are all scoped to the requested id -- never a bare unscoped scan
+// (which is what skeleton's query looks like, and what Show used to funnel
+// through). It also checks the functional contract: full skeleton fields +
+// detail loaded for the requested id, plus a reverse Dependent populated
+// from another issue (ab-2) that depends on it.
+func TestDoltShowIsTargetedNotFullScan(t *testing.T) {
+	var queries []string
+	run := func(_ context.Context, _ string, args ...string) ([]byte, error) {
+		q := args[2] // ["sql","-q",<sql>,"-r","json"]
+		queries = append(queries, q)
+		switch {
+		case strings.Contains(q, "HASHOF"):
+			return []byte(`{"rows":[{"h":"snap1"}]}`), nil
+		case strings.Contains(q, "description,design"):
+			return []byte(`{"rows":[{"id":"ab-1","description":"D"}]}`), nil
+		case strings.Contains(q, "FROM comments"):
+			return []byte(`{}`), nil
+		case strings.Contains(q, "FROM issues"):
+			return []byte(`{"rows":[{"id":"ab-1","title":"T","status":"open","issue_type":"task","priority":1,"created_by":"Al","created_at":"2026-01-20 18:53:52","updated_at":"2026-01-20 18:53:52"}]}`), nil
+		case strings.Contains(q, "FROM labels"):
+			return []byte(`{"rows":[{"issue_id":"ab-1","label":"ui"}]}`), nil
+		case strings.Contains(q, "FROM dependencies"):
+			return []byte(`{"rows":[{"issue_id":"ab-2","type":"blocks","depends_on_issue_id":"ab-1"}]}`), nil
+		default:
+			return []byte(`{}`), nil
+		}
+	}
+	c := &doltClient{r: &doltRunner{dir: "/x", run: run, sem: make(chan struct{}, 1)}, refreshMu: &sync.Mutex{}}
+
+	got, err := c.Show(context.Background(), []string{"ab-1"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(got) != 1 || got[0].ID != "ab-1" || !got[0].DetailLoaded || got[0].Description != "D" {
+		t.Fatalf("show=%v", got)
+	}
+	if len(got[0].Dependents) != 1 || got[0].Dependents[0].ID != "ab-2" {
+		t.Fatalf("expected reverse dependent ab-2, got %v", got[0].Dependents)
+	}
+
+	for _, q := range queries {
+		isSkeletonIssuesQuery := strings.Contains(q, skeletonCols) && strings.Contains(q, "FROM issues")
+		if isSkeletonIssuesQuery && !strings.Contains(q, "id IN") {
+			t.Errorf("issues skeleton query not scoped to id IN (...): %q", q)
+		}
+		if strings.Contains(q, "FROM labels") && !strings.Contains(q, "issue_id IN") {
+			t.Errorf("labels query not scoped to issue_id IN (...): %q", q)
+		}
+		if strings.Contains(q, "FROM dependencies") {
+			if !strings.Contains(q, "issue_id IN") || !strings.Contains(q, "depends_on_issue_id IN") {
+				t.Errorf("dependencies query missing both-direction id scoping: %q", q)
+			}
+		}
+	}
+}
+
 // TestDoltSkeletonLeavesCommentsNil guards against ab-6irx.2: a skeleton row
 // must leave Comments nil (not a non-nil empty slice) so internal/ui's
 // markExportedCommentsLoaded (Comments != nil => loaded) does not mark every

@@ -5,6 +5,7 @@ import (
 	"context"
 	"fmt"
 	"regexp"
+	"strings"
 	"sync"
 	"time"
 )
@@ -68,11 +69,11 @@ func (c *doltClient) List(ctx context.Context) ([]LiteIssue, error) {
 	return out, nil
 }
 
-// Show implements Reader: it takes a single snapshot, builds the skeleton
-// once, then loads the heavy detail fields (and comments) for exactly the
-// requested ids under that same snapshot, so every returned issue reflects
-// one consistent point in history. Show does not take refreshMu: it snapshots
-// independently of Export/List's single-flighted refresh.
+// Show implements Reader: it takes a single snapshot, then queries only the
+// requested ids directly (issues/labels/deps scoped via idInClause, see
+// showSkeletons) instead of scanning the full tables, then loadDetail fills
+// in the heavy fields and comments. Show does not take refreshMu: it
+// snapshots independently of Export/List's single-flighted refresh.
 func (c *doltClient) Show(ctx context.Context, ids []string) ([]FullIssue, error) {
 	if len(ids) == 0 {
 		return []FullIssue{}, nil
@@ -82,25 +83,67 @@ func (c *doltClient) Show(ctx context.Context, ids []string) ([]FullIssue, error
 		return nil, err
 	}
 	asof := asOf(snap)
-	all, err := c.skeleton(ctx, asof)
+
+	idClause, err := idInClause(ids)
 	if err != nil {
 		return nil, err
 	}
-	want := make(map[string]struct{}, len(ids))
-	for _, id := range ids {
-		want[id] = struct{}{}
+	_, ordered, err := c.showSkeletons(ctx, asof, idClause)
+	if err != nil {
+		return nil, err
 	}
-	var out []FullIssue
-	for i := range all {
-		if _, ok := want[all[i].ID]; !ok {
-			continue
-		}
-		if err := c.loadDetail(ctx, asof, &all[i]); err != nil {
+
+	out := make([]FullIssue, 0, len(ordered))
+	for _, iss := range ordered {
+		if err := c.loadDetail(ctx, asof, iss); err != nil {
 			return nil, err
 		}
-		out = append(out, all[i])
+		out = append(out, *iss)
 	}
 	return out, nil
+}
+
+// idInClause builds a parenthesized, comma-joined `IN (...)` fragment (e.g.
+// "('ab-1','ab-2')"), quoting each id via sqlLiteral (injection-safe).
+func idInClause(ids []string) (string, error) {
+	lits := make([]string, len(ids))
+	for i, id := range ids {
+		lit, err := sqlLiteral(id)
+		if err != nil {
+			return "", err
+		}
+		lits[i] = lit
+	}
+	return "(" + strings.Join(lits, ",") + ")", nil
+}
+
+// showSkeletons is Show's targeted alternative to skeleton: issues, labels,
+// and dependencies are all scoped to idClause (from idInClause) instead of a
+// full-table scan. Tombstoned requested ids are excluded (skeleton's default
+// filter). Dependencies are scoped by `issue_id IN idClause OR
+// depends_on_issue_id IN idClause` so both edge directions land on the
+// requested ids even when the other end of the edge is outside idClause.
+func (c *doltClient) showSkeletons(
+	ctx context.Context, asof, idClause string,
+) (map[string]*FullIssue, []*FullIssue, error) {
+	where := skeletonWhereClause(false, "id IN "+idClause)
+	q := "SELECT " + skeletonCols + " FROM issues" + asof + " WHERE " + where + " ORDER BY created_at, id"
+	issueRows, err := c.r.query(ctx, q)
+	if err != nil {
+		return nil, nil, err
+	}
+	byID, ordered, err := assembleSkeletonIssues(issueRows)
+	if err != nil {
+		return nil, nil, err
+	}
+	if err := c.attachLabels(ctx, asof, byID, "issue_id IN "+idClause); err != nil {
+		return nil, nil, err
+	}
+	depWhere := "issue_id IN " + idClause + " OR depends_on_issue_id IN " + idClause
+	if err := c.attachDeps(ctx, asof, byID, depWhere); err != nil {
+		return nil, nil, err
+	}
+	return byID, ordered, nil
 }
 
 // skeletonCols lists the light issue columns read by skeleton (excludes the
@@ -153,6 +196,29 @@ func (c *doltClient) skeletonWhere(
 		return nil, err
 	}
 
+	byID, ordered, err := assembleSkeletonIssues(issueRows)
+	if err != nil {
+		return nil, err
+	}
+
+	if err := c.attachLabels(ctx, asof, byID, ""); err != nil {
+		return nil, err
+	}
+	if err := c.attachDeps(ctx, asof, byID, ""); err != nil {
+		return nil, err
+	}
+
+	out := make([]FullIssue, len(ordered))
+	for i, p := range ordered {
+		out[i] = *p
+	}
+	return out, nil
+}
+
+// assembleSkeletonIssues converts issue rows (already filtered by the
+// caller's SQL) into per-issue FullIssue skeletons, validated and indexed by
+// id; shared by skeletonWhere (full scan) and showSkeletons (id-scoped).
+func assembleSkeletonIssues(issueRows []map[string]any) (map[string]*FullIssue, []*FullIssue, error) {
 	byID := make(map[string]*FullIssue, len(issueRows))
 	ordered := make([]*FullIssue, 0, len(issueRows))
 	for _, row := range issueRows {
@@ -183,27 +249,15 @@ func (c *doltClient) skeletonWhere(
 			// discarded genuinely-loaded comments on every refresh (ab-6irx.2).
 		}
 		if err := validateRequired(iss); err != nil {
-			return nil, err
+			return nil, nil, err
 		}
 		if err := validateSkeletonNotPreloaded(iss); err != nil {
-			return nil, err
+			return nil, nil, err
 		}
 		byID[iss.ID] = &iss
 		ordered = append(ordered, &iss)
 	}
-
-	if err := c.attachLabels(ctx, asof, byID); err != nil {
-		return nil, err
-	}
-	if err := c.attachDeps(ctx, asof, byID); err != nil {
-		return nil, err
-	}
-
-	out := make([]FullIssue, len(ordered))
-	for i, p := range ordered {
-		out[i] = *p
-	}
-	return out, nil
+	return byID, ordered, nil
 }
 
 // Delta computes an incremental refresh of prev: the watermark is the max
@@ -347,10 +401,14 @@ func validateSkeletonNotPreloaded(iss FullIssue) error {
 	return nil
 }
 
-// attachLabels loads all labels and appends each to its owning issue in byID.
-// Labels for unknown issue ids (not present in byID) are silently skipped.
-func (c *doltClient) attachLabels(ctx context.Context, asof string, byID map[string]*FullIssue) error {
-	rows, err := c.r.query(ctx, "SELECT issue_id,label FROM labels"+asof+" ORDER BY issue_id,label")
+// attachLabels loads labels (scoped by where, or all if "") and appends each
+// to its owning issue in byID; unknown issue ids are silently skipped.
+func (c *doltClient) attachLabels(ctx context.Context, asof string, byID map[string]*FullIssue, where string) error {
+	q := "SELECT issue_id,label FROM labels" + asof
+	if where != "" {
+		q += " WHERE " + where
+	}
+	rows, err := c.r.query(ctx, q+" ORDER BY issue_id,label")
 	if err != nil {
 		return err
 	}
@@ -362,11 +420,16 @@ func (c *doltClient) attachLabels(ctx context.Context, asof string, byID map[str
 	return nil
 }
 
-// attachDeps loads all dependency rows (every dependency type, not just
-// parent-child) and populates both the forward Dependencies edge on the
-// depending issue and the reverse Dependents edge on the depended-upon issue.
-func (c *doltClient) attachDeps(ctx context.Context, asof string, byID map[string]*FullIssue) error {
-	rows, err := c.r.query(ctx, "SELECT issue_id,type,depends_on_issue_id FROM dependencies"+asof)
+// attachDeps loads dependency rows (scoped by where, or all if ""; every
+// dependency type, not just parent-child) and populates both the forward
+// Dependencies edge on the depending issue and the reverse Dependents edge
+// on the depended-upon issue.
+func (c *doltClient) attachDeps(ctx context.Context, asof string, byID map[string]*FullIssue, where string) error {
+	q := "SELECT issue_id,type,depends_on_issue_id FROM dependencies" + asof
+	if where != "" {
+		q += " WHERE " + where
+	}
+	rows, err := c.r.query(ctx, q)
 	if err != nil {
 		return err
 	}
