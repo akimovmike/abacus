@@ -263,6 +263,10 @@ func TestCheckDBForChangesDetectsModification(t *testing.T) {
 		client:        beads.NewMockClient(),
 		dbPath:        dbFile,
 		lastDBModTime: fileModTime(t, dbFile),
+		// lastReconcile: time.Now() keeps this test scoped to mtime-based
+		// detection; a zero-value lastReconcile would look infinitely stale
+		// and trip the wall-clock fallback (ab-6irx.7) on the first call.
+		lastReconcile: time.Now(),
 	}
 
 	if cmd := app.checkDBForChanges(); cmd != nil {
@@ -303,6 +307,8 @@ func TestCheckDBForChangesIgnoresShmModification(t *testing.T) {
 		client:        beads.NewMockClient(),
 		dbPath:        dbFile,
 		lastDBModTime: fileModTime(t, dbFile),
+		// See TestCheckDBForChangesDetectsModification for why this is set.
+		lastReconcile: time.Now(),
 	}
 
 	time.Sleep(10 * time.Millisecond)
@@ -338,6 +344,8 @@ func TestCheckDBForChangesDetectsNestedDoltWrite(t *testing.T) {
 		client:        beads.NewMockClient(),
 		dbPath:        storeDir,
 		lastDBModTime: seed,
+		// See TestCheckDBForChangesDetectsModification for why this is set.
+		lastReconcile: time.Now(),
 	}
 
 	if cmd := app.checkDBForChanges(); cmd != nil {

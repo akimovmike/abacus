@@ -73,7 +73,11 @@ func TestReconcileDueNoDeltaClientAlwaysTrue(t *testing.T) {
 }
 
 func TestReconcileDueDeltaClientBoundedCadence(t *testing.T) {
-	app := &App{client: newDeltaStubClient()}
+	// lastReconcile: time.Now() isolates the count-based cadence under test
+	// from the wall-clock fallback (ab-6irx.7, reconcileMaxAge) — a
+	// zero-value lastReconcile would look infinitely stale and make
+	// reconcileDue() true from the first iteration regardless of the count.
+	app := &App{client: newDeltaStubClient(), lastReconcile: time.Now()}
 	for i := 0; i < reconcileEveryTicks; i++ {
 		if app.reconcileDue() {
 			t.Fatalf("expected reconcileDue=false before the cadence threshold (tick %d)", i)
@@ -224,6 +228,10 @@ func TestCommentsSurviveDeltaTickAndUnchangedReconcile(t *testing.T) {
 
 	app := &App{
 		client: client,
+		// lastReconcile: time.Now() isolates the delta-tick step below from
+		// the wall-clock reconcile fallback (ab-6irx.7) -- reconcileDue()
+		// must reflect only the count-based cadence here.
+		lastReconcile: time.Now(),
 		roots: []*graph.Node{{
 			Issue: beads.FullIssue{
 				ID: "ab-1", Title: "T", Status: "open", IssueType: "task",
@@ -354,6 +362,9 @@ func TestDetailSurvivesDeltaTick(t *testing.T) {
 
 	app := &App{
 		client: client,
+		// See TestCommentsSurviveDeltaTickAndUnchangedReconcile for why this
+		// is set.
+		lastReconcile: time.Now(),
 		roots: []*graph.Node{{
 			Issue: beads.FullIssue{
 				ID: "ab-1", Title: "T", Status: "open", IssueType: "task",
@@ -584,6 +595,9 @@ func TestCommentAndDetailErrorExcludedFromRetryAfterDeltaTickButClearOnReconcile
 
 	app := &App{
 		client: client,
+		// See TestCommentsSurviveDeltaTickAndUnchangedReconcile for why this
+		// is set.
+		lastReconcile: time.Now(),
 		roots: []*graph.Node{{
 			Issue:        beads.FullIssue{ID: "ab-1", Title: "T", Status: "open", IssueType: "task"},
 			CommentError: "boom: bd show failed",

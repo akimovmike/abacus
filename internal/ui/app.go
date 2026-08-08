@@ -171,6 +171,15 @@ type App struct {
 	// the bounded cadence itself); irrelevant for a non-Delta client, which
 	// always reconciles.
 	deltaTicksSinceReconcile int
+	// lastReconcile is the wall-clock time a full Export reconcile was last
+	// dispatched — by first load (NewApp), forceRefresh ('r'), the
+	// count-based cadence, or the wall-clock fallback itself (see
+	// reconcileIntervalElapsed / refresh_cadence.go, fold ab-6irx.7). It
+	// bounds how long a metadata-only external edit that a Delta tick can't
+	// see stays undetected when the DB then goes quiet: even with zero
+	// further DB-change ticks, the periodic tickMsg still drives
+	// checkDBForChanges to fire one reconcile once reconcileMaxAge elapses.
+	lastReconcile time.Time
 	// commentLoadInFlight guards against overlapping background comment loads,
 	// which otherwise pile up under frequent refreshes and exhaust the per-load
 	// timeout, mass-killing in-flight bd show processes.
@@ -385,6 +394,7 @@ func NewApp(cfg Config) (*App, error) {
 		client:          client,
 		dbPath:          storePath,
 		lastDBModTime:   modTime,
+		lastReconcile:   time.Now(),
 		spinner:         s,
 		keys:            DefaultKeyMap(),
 		sessionStart:    time.Now(),

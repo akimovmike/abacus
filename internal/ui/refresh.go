@@ -133,46 +133,6 @@ func flattenIssues(roots []*graph.Node) []beads.FullIssue {
 	return out
 }
 
-func (m *App) checkDBForChanges() tea.Cmd {
-	if m.refreshInFlight || m.dbPath == "" {
-		return nil
-	}
-
-	modTime, err := m.latestDBModTime()
-	if err != nil {
-		m.lastError = fmt.Sprintf("refresh check failed: %v", err)
-		m.lastErrorSource = errorSourceRefresh
-		m.lastRefreshStats = "refresh error"
-		return nil // Try again next tick
-	}
-
-	if !modTime.After(m.lastDBModTime) {
-		return nil
-	}
-
-	// A prior auto-refresh for this DB state already failed; don't hammer bd
-	// with the same doomed read every tick. Wait for a newer write (mtime
-	// advances past the last attempt) or a manual refresh.
-	if !modTime.After(m.lastAttemptedModTime) {
-		return nil
-	}
-
-	return m.startRefresh(modTime, m.reconcileDue())
-}
-
-// reconcileDue reports whether the upcoming auto-refresh tick should run a
-// full Export reconcile instead of an incremental Delta. A client with no
-// Delta support has no incremental path at all, so it always "reconciles"
-// via Export — exactly its pre-existing behavior, unchanged. A Delta-capable
-// client reconciles once every reconcileEveryTicks delta refreshes (bounded
-// cadence, fold R01).
-func (m *App) reconcileDue() bool {
-	if _, ok := m.client.(deltaClient); !ok {
-		return true
-	}
-	return m.deltaTicksSinceReconcile >= reconcileEveryTicks
-}
-
 // startRefresh dispatches one refresh. reconcile forces a full Export and
 // resets the bounded-cadence counter; otherwise it attempts an incremental
 // Delta (fetchRefreshIssues falls back to Export for a non-Delta client)
@@ -189,6 +149,12 @@ func (m *App) startRefresh(targetModTime time.Time, reconcile bool) tea.Cmd {
 	// indefinitely postpone the bounded reconcile that would otherwise fix it.
 	if reconcile {
 		m.deltaTicksSinceReconcile = 0
+		// Stamped at dispatch time (mirrors deltaTicksSinceReconcile above)
+		// so the wall-clock fallback (checkDBForChanges/reconcileDue, see
+		// refresh_cadence.go) re-arms immediately and can't busy-loop —
+		// the interval gate holds again before this reconcile even
+		// completes.
+		m.lastReconcile = time.Now()
 	} else {
 		m.deltaTicksSinceReconcile++
 	}
