@@ -11,12 +11,20 @@ import (
 
 // TestDoltExportConformance verifies that the bd Dolt reader correctly maps
 // the JSON output of `bd list --json` to the FullIssue shape abacus expects.
-// It skips when bd is unavailable or when bd initializes a non-Dolt store.
+// It skips when bd or dolt is unavailable, or when bd initializes a
+// non-Dolt store. The dolt binary check is required in addition to bd:
+// NewDoltClient shells out via `dolt sql` (dolt_exec.go execDolt), a
+// separate binary from the bd-embedded Dolt library used by `bd init`, so a
+// machine with bd but no dolt on PATH would otherwise fail here instead of
+// skipping cleanly.
 func TestDoltExportConformance(t *testing.T) {
 	if testing.Short() {
 		t.Skip("skipping integration test in short mode")
 	}
 	skipIfNoBackend(t, "bd")
+	if _, err := exec.LookPath("dolt"); err != nil {
+		t.Skip("dolt binary not found, skipping Dolt conformance test")
+	}
 
 	env := setupBackendTestDB(t, "bd")
 	defer env.cleanup()
