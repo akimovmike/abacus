@@ -1,0 +1,124 @@
+package beads
+
+import (
+	"context"
+	"strings"
+	"sync"
+	"testing"
+)
+
+func newStubClient(t *testing.T, responses map[string]string) *doltClient {
+	t.Helper()
+	run := func(_ context.Context, _ string, args ...string) ([]byte, error) {
+		q := args[2] // ["sql","-q",<sql>,"-r","json"]
+		for substr, resp := range responses {
+			if strings.Contains(q, substr) {
+				return []byte(resp), nil
+			}
+		}
+		return []byte(`{}`), nil
+	}
+	return &doltClient{r: &doltRunner{dir: "/x", run: run, mu: &sync.Mutex{}}}
+}
+
+func TestDoltSkeletonAssembles(t *testing.T) {
+	c := newStubClient(t, map[string]string{
+		"FROM issues":       `{"rows":[{"id":"ab-1","title":"T","status":"open","issue_type":"task","priority":2,"assignee":null,"created_by":"Al","created_at":"2026-01-20 18:53:52","updated_at":"2026-01-20 18:53:52","closed_at":null}]}`,
+		"FROM labels":       `{"rows":[{"issue_id":"ab-1","label":"ui"}]}`,
+		"FROM dependencies": `{"rows":[{"issue_id":"ab-1","type":"blocks","depends_on_issue_id":"ab-2"}]}`,
+	})
+	got, err := c.skeleton(context.Background(), "")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(got) != 1 || got[0].ID != "ab-1" || got[0].Title != "T" {
+		t.Fatalf("issues=%v", got)
+	}
+	if got[0].DetailLoaded {
+		t.Error("skeleton must leave DetailLoaded=false")
+	}
+	if got[0].CreatedBy != "Al" {
+		t.Errorf("created_by=%q, want Al", got[0].CreatedBy)
+	}
+	if len(got[0].Labels) != 1 || got[0].Labels[0] != "ui" {
+		t.Errorf("labels=%v", got[0].Labels)
+	}
+	if len(got[0].Dependencies) != 1 || got[0].Dependencies[0].Type != "blocks" || got[0].Dependencies[0].TargetID != "ab-2" {
+		t.Errorf("deps=%v", got[0].Dependencies)
+	}
+}
+
+func TestDoltSkeletonAssemblesReverseDependents(t *testing.T) {
+	c := newStubClient(t, map[string]string{
+		"FROM issues": `{"rows":[
+			{"id":"ab-1","title":"T1","status":"open","issue_type":"task","priority":2,"assignee":null,"created_by":"Al","created_at":"2026-01-20 18:53:52","updated_at":"2026-01-20 18:53:52","closed_at":null},
+			{"id":"ab-2","title":"T2","status":"open","issue_type":"task","priority":1,"assignee":null,"created_by":"Al","created_at":"2026-01-20 18:53:53","updated_at":"2026-01-20 18:53:53","closed_at":null}
+		]}`,
+		"FROM dependencies": `{"rows":[{"issue_id":"ab-1","type":"blocks","depends_on_issue_id":"ab-2"},{"issue_id":"ab-1","type":"parent-child","depends_on_issue_id":"ab-2"}]}`,
+	})
+	got, err := c.skeleton(context.Background(), "")
+	if err != nil {
+		t.Fatal(err)
+	}
+	byID := make(map[string]FullIssue, len(got))
+	for _, iss := range got {
+		byID[iss.ID] = iss
+	}
+	if len(byID["ab-1"].Dependencies) != 2 {
+		t.Fatalf("ab-1 deps=%v", byID["ab-1"].Dependencies)
+	}
+	if len(byID["ab-2"].Dependents) != 2 {
+		t.Fatalf("ab-2 dependents=%v", byID["ab-2"].Dependents)
+	}
+	if byID["ab-2"].Dependents[0].ID != "ab-1" {
+		t.Errorf("dependent id=%q, want ab-1", byID["ab-2"].Dependents[0].ID)
+	}
+}
+
+func TestDoltSkeletonRejectsBlankRequired(t *testing.T) {
+	c := newStubClient(t, map[string]string{
+		"FROM issues": `{"rows":[{"id":"","title":"","status":"","issue_type":"","priority":0}]}`,
+	})
+	if _, err := c.skeleton(context.Background(), ""); err == nil {
+		t.Fatal("expected schema-mismatch error on blank required fields")
+	}
+}
+
+func TestDoltSkeletonRejectsBlankRequiredPerRow(t *testing.T) {
+	c := newStubClient(t, map[string]string{
+		"FROM issues": `{"rows":[
+			{"id":"ab-1","title":"T","status":"open","issue_type":"task","priority":2},
+			{"id":"ab-2","title":"","status":"open","issue_type":"task","priority":2}
+		]}`,
+	})
+	if _, err := c.skeleton(context.Background(), ""); err == nil {
+		t.Fatal("expected error on second row missing title")
+	}
+}
+
+func TestStrHelper(t *testing.T) {
+	if got := str("hello"); got != "hello" {
+		t.Errorf("str(string)=%q", got)
+	}
+	if got := str(nil); got != "" {
+		t.Errorf("str(nil)=%q, want empty", got)
+	}
+	if got := str(42); got != "" {
+		t.Errorf("str(non-string)=%q, want empty", got)
+	}
+}
+
+func TestIntOfHelper(t *testing.T) {
+	if got := intOf(float64(3)); got != 3 {
+		t.Errorf("intOf(float64)=%d, want 3", got)
+	}
+	if got := intOf(5); got != 5 {
+		t.Errorf("intOf(int)=%d, want 5", got)
+	}
+	if got := intOf(nil); got != 0 {
+		t.Errorf("intOf(nil)=%d, want 0", got)
+	}
+	if got := intOf("not a number"); got != 0 {
+		t.Errorf("intOf(string)=%d, want 0", got)
+	}
+}
