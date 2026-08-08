@@ -342,6 +342,58 @@ func TestDoltRunnerQueryRetryRespectsCtxCancellation(t *testing.T) {
 	}
 }
 
+// TestDoltRunnerQueryReleasesLockDuringBackoff proves the fix for sibling
+// starvation: the per-store lock (sem) must be released before a lock-busy
+// backoff sleep, not held across it. One goroutine is kept busy retrying a
+// persistent lock-busy failure (so it is sleeping through its first ~50ms
+// backoff, having already released sem after its first failed attempt); a
+// SIBLING query on the same doltRunner is fired shortly after and must
+// complete promptly rather than waiting out the busy caller's full ~500ms
+// retry schedule.
+func TestDoltRunnerQueryReleasesLockDuringBackoff(t *testing.T) {
+	stub := func(ctx context.Context, dir string, args ...string) ([]byte, error) {
+		q := args[2]
+		if strings.Contains(q, "busy") {
+			return []byte("error on line 1 for query BUSY: cannot update manifest: database is read only"),
+				errors.New("exit status 1")
+		}
+		return []byte(`{"rows":[{"ok":1}]}`), nil
+	}
+	r := &doltRunner{dir: "/x", run: stub, sem: make(chan struct{}, 1)}
+
+	done := make(chan struct{})
+	go func() {
+		defer close(done)
+		// Exhausts all retries against a persistent lock-busy failure;
+		// spends most of its ~500ms lifetime asleep in backoff, NOT
+		// holding sem, per the fix under test.
+		_, _ = r.query(context.Background(), "SELECT busy")
+	}()
+
+	// Let the busy query make its first attempt and enter its first (50ms)
+	// backoff window, releasing sem, before firing the sibling.
+	time.Sleep(15 * time.Millisecond)
+
+	start := time.Now()
+	rows, err := r.query(context.Background(), "SELECT sibling")
+	elapsed := time.Since(start)
+
+	if err != nil {
+		t.Fatalf("sibling query failed: %v", err)
+	}
+	if len(rows) != 1 || fmt.Sprint(rows[0]["ok"]) != "1" {
+		t.Fatalf("rows=%v", rows)
+	}
+	// If sem were held across the busy query's backoff (the pre-fix
+	// behavior), the sibling would block for most of the ~500ms retry
+	// schedule. It must instead proceed near-instantly.
+	if elapsed > 100*time.Millisecond {
+		t.Fatalf("sibling query took %v, want it to proceed promptly while another caller is mid-backoff (lock must not be held during backoff)", elapsed)
+	}
+
+	<-done // avoid leaking the busy goroutine past the test
+}
+
 // TestIsDoltLockBusy pins the classifier's exact matching behavior: it must
 // recognize the empirically-observed dolt manifest-contention message
 // (case-insensitively) and must not misclassify an unrelated error.

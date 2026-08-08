@@ -109,6 +109,12 @@ var doltLockBusyMarkers = []string{
 
 // isDoltLockBusy reports whether out (the combined stdout+stderr of a
 // failed dolt sql invocation) matches a known lock-busy signature.
+//
+// Accepted ambiguity: a store genuinely sitting on a read-only filesystem
+// (not a transient lock race) would match the same substrings and pay the
+// full retry budget (up to len(doltLockBusyBackoffs)+1 attempts, ~500ms)
+// before surfacing the same underlying error -- correct, just delayed by
+// one retry cycle rather than masked. Accepted risk.
 func isDoltLockBusy(out []byte) bool {
 	lower := strings.ToLower(string(out))
 	for _, marker := range doltLockBusyMarkers {
@@ -195,12 +201,21 @@ type doltRunner struct {
 
 // query runs sql against the dolt database and returns the decoded rows.
 //
-// The per-store lock (sem) is acquired only after the timeout context is
-// derived from ctx, and acquisition itself respects ctx.Done(): a caller
-// blocked waiting on a busy store returns ctx.Err() at the deadline instead
-// of blocking past it. A plain sync.Mutex.Lock() cannot be interrupted by
-// context cancellation, so a buffered (cap 1) channel is used as a
-// ctx-aware mutex instead (ab-6irx.5).
+// The per-store lock (sem) is acquired PER ATTEMPT, not once for the whole
+// call: it protects only the single r.run invocation below and is released
+// immediately afterward -- including across any lock-busy backoff sleep.
+// The lock-busy condition is caused by an EXTERNAL process contending for
+// the store's manifest, so holding THIS process's own serialization lock
+// while waiting it out would needlessly block every sibling caller in this
+// process for up to the full backoff schedule, for no correctness benefit
+// (sem only exists to serialize this process's own dolt subprocesses).
+//
+// Both the per-attempt lock acquire and the backoff wait respect
+// ctx.Done(): a caller blocked on either returns a wrapped ctx.Err() (see
+// wrapCtxErr) at the deadline instead of blocking past it. A plain
+// sync.Mutex.Lock() cannot be interrupted by context cancellation, so a
+// buffered (cap 1) channel is used as a ctx-aware mutex instead
+// (ab-6irx.5).
 //
 // A dolt invocation that fails with a lock-busy signature (isDoltLockBusy)
 // -- e.g. a concurrent external bd/br write racing this read for the
@@ -211,16 +226,16 @@ func (r *doltRunner) query(ctx context.Context, sqlText string) ([]map[string]an
 	ctx, cancel := context.WithTimeout(ctx, doltQueryTimeout)
 	defer cancel()
 
-	select {
-	case r.sem <- struct{}{}:
-	case <-ctx.Done():
-		return nil, ctx.Err()
-	}
-	defer func() { <-r.sem }()
-
 	var lastErr error
 	for attempt := 0; ; attempt++ {
+		select {
+		case r.sem <- struct{}{}:
+		case <-ctx.Done():
+			return nil, wrapCtxErr(ctx.Err(), lastErr)
+		}
 		out, err := r.run(ctx, r.dir, "sql", "-q", sqlText, "-r", "json")
+		<-r.sem // release before any backoff -- never held across the sleep
+
 		if err == nil {
 			return parseDoltRows(out)
 		}
@@ -238,9 +253,21 @@ func (r *doltRunner) query(ctx context.Context, sqlText string) ([]map[string]an
 		select {
 		case <-time.After(doltLockBusyBackoffs[attempt]):
 		case <-ctx.Done():
-			return nil, fmt.Errorf("%w (last dolt error: %v)", ctx.Err(), lastErr)
+			return nil, wrapCtxErr(ctx.Err(), lastErr)
 		}
 	}
+}
+
+// wrapCtxErr augments ctxErr with the last dolt error observed so far (if
+// any), so both ctx-cancellation return paths in query above -- while
+// waiting for the per-attempt lock, and while waiting out a lock-busy
+// backoff -- report consistent diagnostic detail instead of one being a
+// bare ctx.Err() and the other richer.
+func wrapCtxErr(ctxErr, lastErr error) error {
+	if lastErr == nil {
+		return ctxErr
+	}
+	return fmt.Errorf("%w (last dolt error: %v)", ctxErr, lastErr)
 }
 
 // firstLine returns the first line of b, or all of b if it has no newline.
