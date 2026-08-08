@@ -9,6 +9,7 @@ import (
 	"log"
 	"os"
 	"os/exec"
+	"path/filepath"
 	"time"
 
 	"github.com/charmbracelet/huh"
@@ -379,14 +380,14 @@ func NewClientForBackend(backend string, desc StoreDescriptor, ctx BackendContex
 	case BackendBd:
 		switch desc.Kind {
 		case StoreKindDolt:
-			return NewBdDoltClient(desc.WorkDir), nil
+			return NewDoltClient(filepath.Join(desc.WorkDir, ".beads"), ctx.Database, NewBdCLIClient(WithBdWorkDir(desc.WorkDir)))
 		case StoreKindSQLite:
 			return NewBdSQLiteClient(desc.DBPath), nil
 		}
 	case BackendBr:
 		switch desc.Kind {
 		case StoreKindDolt:
-			return NewBrDoltClient(desc.WorkDir), nil
+			return NewDoltClient(filepath.Join(desc.WorkDir, ".beads"), ctx.Database, NewBrCLIClient(WithBrWorkDir(desc.WorkDir)))
 		case StoreKindSQLite:
 			return NewBrSQLiteClient(desc.DBPath), nil
 		}

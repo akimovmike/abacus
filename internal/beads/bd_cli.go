@@ -402,12 +402,6 @@ func extractJSON(out []byte) []byte {
 	return extractJSONDelimited(out, '{', '}')
 }
 
-// extractJSONArray finds and returns the first valid JSON array in the output.
-// It mirrors extractJSON but matches square brackets.
-func extractJSONArray(out []byte) []byte {
-	return extractJSONDelimited(out, '[', ']')
-}
-
 func extractJSONDelimited(out []byte, open, close byte) []byte {
 	for start := 0; start < len(out); start++ {
 		idx := bytes.IndexByte(out[start:], open)

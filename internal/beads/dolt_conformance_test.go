@@ -58,7 +58,7 @@ func TestDoltExportConformance(t *testing.T) {
 	}
 
 	// Read the issues through the Dolt reader.
-	client := NewBdDoltClient(env.WorkDir)
+	client := newClientForBackend(t, env)
 	issues, err := client.Export(ctx)
 	if err != nil {
 		t.Fatalf("Dolt Export failed: %v", err)

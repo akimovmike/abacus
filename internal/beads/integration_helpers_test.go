@@ -3,6 +3,7 @@
 package beads
 
 import (
+	"context"
 	"os"
 	"os/exec"
 	"path/filepath"
@@ -93,18 +94,37 @@ func newClientForBackend(t *testing.T, env backendTestEnv) Client {
 	switch env.Backend {
 	case "br":
 		if env.StoreKind == StoreKindDolt {
-			return NewBrDoltClient(env.WorkDir)
+			return newDoltClientForEnv(t, env, NewBrCLIClient(WithBrWorkDir(env.WorkDir)))
 		}
 		return NewBrSQLiteClient(env.DBPath, WithBrWorkDir(env.WorkDir))
 	case "bd":
 		if env.StoreKind == StoreKindDolt {
-			return NewBdDoltClient(env.WorkDir)
+			return newDoltClientForEnv(t, env, NewBdCLIClient(WithBdWorkDir(env.WorkDir)))
 		}
 		return NewBdSQLiteClient(env.DBPath)
 	default:
 		t.Fatalf("unknown backend: %s", env.Backend)
 		return nil
 	}
+}
+
+// newDoltClientForEnv resolves the embedded Dolt database name for env via
+// `<bin> context --json` (ProbeContext falls back to disk detection on
+// older binaries) and constructs a doltClient that reads via `dolt sql` and
+// delegates writes to w. The database name can't be guessed from WorkDir
+// alone — NewDoltClient needs the exact
+// <beadsDir>/embeddeddolt/<database> directory bd/br actually created.
+func newDoltClientForEnv(t *testing.T, env backendTestEnv, w Writer) Client {
+	t.Helper()
+	bctx, err := ProbeContext(context.Background(), env.Backend, env.WorkDir)
+	if err != nil {
+		t.Fatalf("ProbeContext(%s): %v", env.Backend, err)
+	}
+	client, err := NewDoltClient(filepath.Join(env.WorkDir, ".beads"), bctx.Database, w)
+	if err != nil {
+		t.Fatalf("NewDoltClient(%s): %v", env.Backend, err)
+	}
+	return client
 }
 
 // extractCreatedID extracts the issue ID from create command output.

@@ -2,6 +2,9 @@ package beads
 
 import (
 	"context"
+	"os"
+	"os/exec"
+	"path/filepath"
 	"strings"
 	"sync"
 	"testing"
@@ -287,5 +290,62 @@ func TestDoltDeltaNoBaselineIsFullRead(t *testing.T) {
 	}
 	if len(got) != 1 || got[0].ID != "ab-1" {
 		t.Fatalf("expected full read with one issue, got %v", got)
+	}
+}
+
+// TestNewDoltClient_MissingDirReturnsError is the dolt-reader conformance
+// entry for NewClientForBackend's routing (backend.go): when no
+// embeddeddolt/<database> directory exists under beadsDir, NewDoltClient
+// must surface resolveDoltDir's error rather than returning a client that
+// can never query anything. This runs before the dolt-version gate, so it
+// needs no real dolt binary.
+func TestNewDoltClient_MissingDirReturnsError(t *testing.T) {
+	beadsDir := filepath.Join(t.TempDir(), ".beads")
+	if _, err := NewDoltClient(beadsDir, "missing", nil); err == nil {
+		t.Fatal("expected error when embeddeddolt database directory does not exist")
+	}
+}
+
+// TestNewDoltClient_ConstructsReadableClient exercises the real, unstubbed
+// NewDoltClient constructor end to end: beadsDir/database resolution, the
+// dolt-binary version gate, and a live `dolt sql` call against a genuine
+// (schema-less) Dolt database. Unlike the rest of this file it does not
+// inject a stub commandRunner, because NewDoltClient (unlike
+// checkDoltVersion) always shells out via the unexported execDolt — so this
+// is the only place that exercises that real wiring outside the
+// integration-tagged fixtures (dolt_conformance_test.go). It skips when the
+// dolt CLI is unavailable rather than failing the suite, mirroring how
+// integration tests skip on a missing bd/br binary.
+func TestNewDoltClient_ConstructsReadableClient(t *testing.T) {
+	if !commandExists("dolt") {
+		t.Skip("dolt binary not found, skipping NewDoltClient construction test")
+	}
+	dir, err := filepath.EvalSymlinks(t.TempDir())
+	if err != nil {
+		t.Fatalf("resolve temp dir symlinks: %v", err)
+	}
+	beadsDir := filepath.Join(dir, ".beads")
+	dbDir := filepath.Join(beadsDir, "embeddeddolt", "testdb")
+	if err := os.MkdirAll(dbDir, 0o755); err != nil {
+		t.Fatalf("create embeddeddolt dir: %v", err)
+	}
+	initCmd := exec.Command("dolt", "init")
+	initCmd.Dir = dbDir
+	if out, err := initCmd.CombinedOutput(); err != nil {
+		t.Fatalf("dolt init: %v\n%s", err, out)
+	}
+
+	client, err := NewDoltClient(beadsDir, "testdb", nil)
+	if err != nil {
+		t.Fatalf("NewDoltClient: %v", err)
+	}
+	if _, ok := client.(*doltClient); !ok {
+		t.Fatalf("expected *doltClient, got %T", client)
+	}
+	// A freshly-`dolt init`'d repo has no `issues` table yet, so Export must
+	// surface that as an error instead of panicking or hanging — confirming
+	// the client is really talking to this dolt database via `dolt sql`.
+	if _, err := client.Export(context.Background()); err == nil {
+		t.Fatal("expected Export to fail against a database with no issues table")
 	}
 }

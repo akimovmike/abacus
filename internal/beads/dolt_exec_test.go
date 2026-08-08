@@ -31,19 +31,6 @@ func TestSQLLiteral(t *testing.T) {
 	}
 }
 
-func TestValidIssueID(t *testing.T) {
-	for _, id := range []string{"ab-6irx", "ab-pccw.3.15", "002c0cad-c1d2-518b-a3be-d07d1665c763"} {
-		if !validIssueID(id) {
-			t.Errorf("want valid: %q", id)
-		}
-	}
-	for _, id := range []string{"", "a'b", "a;b", "a b", "a/b"} {
-		if validIssueID(id) {
-			t.Errorf("want invalid: %q", id)
-		}
-	}
-}
-
 func TestParseDoltRows(t *testing.T) {
 	rows, err := parseDoltRows([]byte(`{"rows":[{"id":"ab-1","priority":3}]}`))
 	if err != nil || len(rows) != 1 || rows[0]["id"] != "ab-1" {

@@ -2,6 +2,8 @@ package beads
 
 import (
 	"errors"
+	"os"
+	"path/filepath"
 	"strings"
 	"testing"
 
@@ -884,31 +886,71 @@ func TestNewClientForBackend_BrSQLite(t *testing.T) {
 	}
 }
 
+// newDoltWorkDir creates a temp workdir with an embedded Dolt database
+// directory at .beads/embeddeddolt/<database> so resolveDoltDir succeeds.
+// Symlinks are resolved up front (macOS TempDir lives under /var, a symlink
+// to /private/var) so it matches the realpath comparison resolveDoltDir does.
+func newDoltWorkDir(t *testing.T, database string) string {
+	t.Helper()
+	dir, err := filepath.EvalSymlinks(t.TempDir())
+	if err != nil {
+		t.Fatalf("resolve temp dir symlinks: %v", err)
+	}
+	if err := os.MkdirAll(filepath.Join(dir, ".beads", "embeddeddolt", database), 0o755); err != nil {
+		t.Fatalf("create embeddeddolt dir: %v", err)
+	}
+	return dir
+}
+
 // TestNewClientForBackend_BdDolt tests creating a bd dolt client.
+// NewDoltClient shells out to the real dolt binary to check its version, so
+// this test skips when dolt is unavailable rather than mocking that check.
 func TestNewClientForBackend_BdDolt(t *testing.T) {
-	client, err := NewClientForBackend(BackendBd, StoreDescriptor{Kind: StoreKindDolt, WorkDir: "/tmp/proj"}, BackendContext{Backend: "dolt"})
+	if !commandExists("dolt") {
+		t.Skip("dolt binary not found, skipping dolt client construction test")
+	}
+	dir := newDoltWorkDir(t, "testdb")
+	client, err := NewClientForBackend(BackendBd, StoreDescriptor{Kind: StoreKindDolt, WorkDir: dir}, BackendContext{Backend: "dolt", Database: "testdb"})
 	if err != nil {
 		t.Fatalf("NewClientForBackend(%q, dolt) error = %v, want nil", BackendBd, err)
 	}
 	if client == nil {
 		t.Fatal("NewClientForBackend returned nil client")
 	}
-	if _, ok := client.(*bdDoltClient); !ok {
-		t.Errorf("expected *bdDoltClient, got %T", client)
+	if _, ok := client.(*doltClient); !ok {
+		t.Errorf("expected *doltClient, got %T", client)
 	}
 }
 
 // TestNewClientForBackend_BrDolt tests creating a br dolt client.
+// NewDoltClient shells out to the real dolt binary to check its version, so
+// this test skips when dolt is unavailable rather than mocking that check.
 func TestNewClientForBackend_BrDolt(t *testing.T) {
-	client, err := NewClientForBackend(BackendBr, StoreDescriptor{Kind: StoreKindDolt, WorkDir: "/tmp/proj"}, BackendContext{Backend: "dolt"})
+	if !commandExists("dolt") {
+		t.Skip("dolt binary not found, skipping dolt client construction test")
+	}
+	dir := newDoltWorkDir(t, "testdb")
+	client, err := NewClientForBackend(BackendBr, StoreDescriptor{Kind: StoreKindDolt, WorkDir: dir}, BackendContext{Backend: "dolt", Database: "testdb"})
 	if err != nil {
 		t.Fatalf("NewClientForBackend(%q, dolt) error = %v, want nil", BackendBr, err)
 	}
 	if client == nil {
 		t.Fatal("NewClientForBackend returned nil client")
 	}
-	if _, ok := client.(*brDoltClient); !ok {
-		t.Errorf("expected *brDoltClient, got %T", client)
+	if _, ok := client.(*doltClient); !ok {
+		t.Errorf("expected *doltClient, got %T", client)
+	}
+}
+
+// TestNewClientForBackend_DoltMissingDirReturnsError verifies that a Dolt
+// StoreDescriptor pointing at a workdir with no matching embeddeddolt
+// database surfaces NewDoltClient's resolution error instead of panicking
+// or silently returning a client that can never query anything.
+func TestNewClientForBackend_DoltMissingDirReturnsError(t *testing.T) {
+	dir := t.TempDir()
+	_, err := NewClientForBackend(BackendBd, StoreDescriptor{Kind: StoreKindDolt, WorkDir: dir}, BackendContext{Backend: "dolt", Database: "missing"})
+	if err == nil {
+		t.Fatal("expected error when embeddeddolt database directory does not exist")
 	}
 }
 

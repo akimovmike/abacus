@@ -20,10 +20,6 @@ var idCharset = regexp.MustCompile(`^[A-Za-z0-9._-]+$`)
 // sqlLiteralCharset allows idCharset chars plus single quotes; -- is checked separately.
 var sqlLiteralCharset = regexp.MustCompile(`^[A-Za-z0-9._'-]+$`)
 
-func validIssueID(id string) bool {
-	return id != "" && len(id) <= 128 && idCharset.MatchString(id)
-}
-
 // sqlLiteral returns v as a safe single-quoted SQL string literal.
 // Only allowlisted characters are permitted; single quotes are doubled.
 func sqlLiteral(v string) (string, error) {
