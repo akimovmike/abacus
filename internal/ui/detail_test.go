@@ -180,6 +180,7 @@ func TestDetailSectionsHaveNoBlankLineBetweenLabelAndContent(t *testing.T) {
 			Design:             "\nDesign body",
 			AcceptanceCriteria: " \n- Acceptance item",
 			Notes:              "Some notes here",
+			DetailLoaded:       true,
 			Comments: []beads.Comment{
 				{Author: "qa", Text: "Looks good", CreatedAt: time.Now().Format(time.RFC3339)},
 			},
@@ -457,6 +458,7 @@ func TestDetailSectionsUseConsistentIndentation(t *testing.T) {
 			AcceptanceCriteria: "- first item",
 			Notes:              "Implementation notes",
 			ExternalRef:        "jira-701",
+			DetailLoaded:       true,
 			CreatedAt:          now,
 			UpdatedAt:          now,
 			Comments: []beads.Comment{
@@ -756,16 +758,17 @@ func TestDetailViewShowsCloseReason(t *testing.T) {
 	now := time.Now().Format(time.RFC3339)
 	node := &graph.Node{
 		Issue: beads.FullIssue{
-			ID:          "ab-closed",
-			Title:       "Completed Feature",
-			Status:      "closed",
-			IssueType:   "task",
-			Priority:    2,
-			Description: "Some description here.",
-			CloseReason: "Work completed in commit abc123. All tests passing.",
-			CreatedAt:   now,
-			UpdatedAt:   now,
-			ClosedAt:    now,
+			ID:           "ab-closed",
+			Title:        "Completed Feature",
+			Status:       "closed",
+			IssueType:    "task",
+			Priority:     2,
+			Description:  "Some description here.",
+			CloseReason:  "Work completed in commit abc123. All tests passing.",
+			DetailLoaded: true,
+			CreatedAt:    now,
+			UpdatedAt:    now,
+			ClosedAt:     now,
 		},
 		CommentsLoaded: true,
 	}

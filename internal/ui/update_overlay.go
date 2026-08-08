@@ -49,12 +49,10 @@ func (m *App) handleOverlayMsg(msg tea.Msg) (tea.Model, tea.Cmd, bool) {
 
 	case statusUpdateCompleteMsg:
 		if msg.err != nil {
-			m.lastError = msg.err.Error()
-			m.lastErrorSource = errorSourceOperation
-			m.showErrorToast = true
-			m.errorToastStart = time.Now()
-			return m, scheduleErrorToastTick(), true
+			return m, m.showOperationError(msg.err), true
 		}
+		invalidateCommentCache(m.roots, msg.issueID)
+		invalidateDetailCache(m.roots, msg.issueID)
 		return m, m.forceRefresh(), true
 
 	case statusToastTickMsg:
@@ -106,12 +104,10 @@ func (m *App) handleOverlayMsg(msg tea.Msg) (tea.Model, tea.Cmd, bool) {
 
 	case labelUpdateCompleteMsg:
 		if msg.err != nil {
-			m.lastError = msg.err.Error()
-			m.lastErrorSource = errorSourceOperation
-			m.showErrorToast = true
-			m.errorToastStart = time.Now()
-			return m, scheduleErrorToastTick(), true
+			return m, m.showOperationError(msg.err), true
 		}
+		invalidateCommentCache(m.roots, msg.issueID)
+		invalidateDetailCache(m.roots, msg.issueID)
 		return m, m.forceRefresh(), true
 
 	case labelsToastTickMsg:
@@ -188,12 +184,10 @@ func (m *App) handleOverlayMsg(msg tea.Msg) (tea.Model, tea.Cmd, bool) {
 		m.activeOverlay = OverlayNone
 		m.createOverlay = nil
 		if msg.Err != nil {
-			m.showErrorToast = true
-			m.errorToastStart = time.Now()
-			m.lastError = msg.Err.Error()
-			m.lastErrorSource = errorSourceOperation
-			return m, scheduleErrorToastTick(), true
+			return m, m.showOperationError(msg.Err), true
 		}
+		invalidateCommentCache(m.roots, msg.ID)
+		invalidateDetailCache(m.roots, msg.ID)
 		m.createToastBeadID = msg.ID
 		m.createToastIsUpdate = true
 		m.displayCreateToast(msg.Title, true)
@@ -249,11 +243,7 @@ func (m *App) handleOverlayMsg(msg tea.Msg) (tea.Model, tea.Cmd, bool) {
 
 	case deleteCompleteMsg:
 		if msg.err != nil {
-			m.lastError = msg.err.Error()
-			m.lastErrorSource = errorSourceOperation
-			m.showErrorToast = true
-			m.errorToastStart = time.Now()
-			return m, scheduleErrorToastTick(), true
+			return m, m.showOperationError(msg.err), true
 		}
 		m.removeNodeFromTree(msg.issueID)
 		for _, childID := range msg.children {
@@ -284,11 +274,7 @@ func (m *App) handleOverlayMsg(msg tea.Msg) (tea.Model, tea.Cmd, bool) {
 
 	case commentCompleteMsg:
 		if msg.err != nil {
-			m.lastError = msg.err.Error()
-			m.lastErrorSource = errorSourceOperation
-			m.showErrorToast = true
-			m.errorToastStart = time.Now()
-			return m, scheduleErrorToastTick(), true
+			return m, m.showOperationError(msg.err), true
 		}
 		m.displayCommentToast(msg.issueID)
 		// Apply the freshly fetched comments directly so the new one shows now
@@ -401,12 +387,10 @@ func (m *App) handleOverlayMsg(msg tea.Msg) (tea.Model, tea.Cmd, bool) {
 
 	case priorityUpdateCompleteMsg:
 		if msg.err != nil {
-			m.lastError = msg.err.Error()
-			m.lastErrorSource = errorSourceOperation
-			m.showErrorToast = true
-			m.errorToastStart = time.Now()
-			return m, scheduleErrorToastTick(), true
+			return m, m.showOperationError(msg.err), true
 		}
+		invalidateCommentCache(m.roots, msg.issueID)
+		invalidateDetailCache(m.roots, msg.issueID)
 		return m, m.forceRefresh(), true
 
 	case priorityToastTickMsg:
@@ -471,7 +455,7 @@ func saveColumnsConfig(cfg columnsOverlayConfig) error {
 // handleCreateComplete processes the createCompleteMsg with fast injection support.
 func (m *App) handleCreateComplete(msg createCompleteMsg) (tea.Model, tea.Cmd, bool) {
 	if msg.err != nil {
-		errMsg := msg.err.Error()
+		errMsg := operationErrorMessage(msg.err)
 		m.lastError = errMsg
 		m.lastErrorSource = errorSourceOperation
 		m.showErrorToast = true

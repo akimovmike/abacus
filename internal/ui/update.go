@@ -10,8 +10,19 @@ import (
 )
 
 // Update handles all tea messages for the App model.
-// It dispatches to focused handlers for overlay, background, and key messages.
+// It dispatches to routeMsg and then checks whether the current selection
+// needs a lazy detail load (dolt skeleton/detail split, fold F13/R03).
 func (m *App) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
+	model, cmd := m.routeMsg(msg)
+	return model, m.appendDetailLoadCmd(cmd)
+}
+
+// routeMsg contains the original per-message dispatch, split out so Update
+// can wrap every return path with appendDetailLoadCmd in one place instead
+// of threading a detail-load command through every handler and every
+// updateViewportContent call site.
+// It dispatches to focused handlers for overlay, background, and key messages.
+func (m *App) routeMsg(msg tea.Msg) (tea.Model, tea.Cmd) {
 	// Overlay messages have highest priority
 	if model, cmd, handled := m.handleOverlayMsg(msg); handled {
 		return model, cmd
@@ -85,6 +96,13 @@ func (m *App) handleBackgroundMsg(msg tea.Msg) (tea.Model, tea.Cmd, bool) {
 			refreshedDetail = m.applyLoadedComment(res) || refreshedDetail
 		}
 		if refreshedDetail {
+			m.updateViewportContent()
+		}
+		return m, nil, true
+
+	case detailLoadedMsg:
+		delete(m.detailLoadInFlight, msg.issueID)
+		if m.applyLoadedDetail(msg) {
 			m.updateViewportContent()
 		}
 		return m, nil, true
@@ -251,7 +269,8 @@ func (m *App) handleBackgroundMsg(msg tea.Msg) (tea.Model, tea.Cmd, bool) {
 
 // Message types for status operations
 type statusUpdateCompleteMsg struct {
-	err error
+	issueID string
+	err     error
 }
 
 type statusToastTickMsg struct{}

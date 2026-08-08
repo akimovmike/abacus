@@ -3,6 +3,8 @@ package ui
 import (
 	"fmt"
 
+	"abacus/internal/beads"
+
 	"github.com/charmbracelet/bubbles/key"
 	tea "github.com/charmbracelet/bubbletea"
 )
@@ -151,6 +153,43 @@ func (m *App) applyLoadedComment(msg commentLoadedMsg) bool {
 	} else {
 		node.CommentError = ""
 		node.Issue.Comments = msg.comments
+		node.CommentsLoaded = true
+	}
+
+	if len(m.visibleRows) == 0 || m.cursor < 0 || m.cursor >= len(m.visibleRows) {
+		return false
+	}
+	return m.visibleRows[m.cursor].Node.Issue.ID == msg.issueID
+}
+
+// applyLoadedDetail updates a single node's detail-load state and returns
+// true if the currently focused detail pane should be refreshed. Mirrors
+// applyLoadedComment for the dolt skeleton/detail split (fold R03/F13):
+// Client.Show already loads comments alongside the heavy detail fields, so
+// a successful load marks CommentsLoaded too, sparing the background
+// comment sweep a redundant fetch for this issue.
+func (m *App) applyLoadedDetail(msg detailLoadedMsg) bool {
+	node := m.findNodeByID(msg.issueID)
+	if node == nil {
+		return false
+	}
+	if msg.err != nil {
+		node.DetailError = fmt.Sprintf("failed: %v", msg.err)
+	} else {
+		node.DetailError = ""
+		iss := msg.issue
+		node.Issue.Description = iss.Description
+		node.Issue.Design = iss.Design
+		node.Issue.Notes = iss.Notes
+		node.Issue.AcceptanceCriteria = iss.AcceptanceCriteria
+		node.Issue.CloseReason = iss.CloseReason
+		node.Issue.ExternalRef = iss.ExternalRef
+		node.Issue.DetailLoaded = true
+		comments := iss.Comments
+		if comments == nil {
+			comments = []beads.Comment{}
+		}
+		node.Issue.Comments = comments
 		node.CommentsLoaded = true
 	}
 

@@ -169,6 +169,11 @@ type App struct {
 	// which otherwise pile up under frequent refreshes and exhaust the per-load
 	// timeout, mass-killing in-flight bd show processes.
 	commentLoadInFlight bool
+	// detailLoadInFlight guards against dispatching a second lazy detail
+	// load (Client.Show) for an issue that already has one in flight, keyed
+	// by issue ID since the user can navigate across several skeleton-only
+	// issues before any single load returns.
+	detailLoadInFlight map[string]bool
 	// refreshFailCount tracks consecutive auto-refresh failures so a single
 	// transient bd hiccup does not flash an error toast (old data stays valid).
 	refreshFailCount int

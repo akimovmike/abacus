@@ -3,7 +3,8 @@ package ui
 import "abacus/internal/beads"
 
 type labelUpdateCompleteMsg struct {
-	err error
+	issueID string
+	err     error
 }
 
 type labelsToastTickMsg struct{}

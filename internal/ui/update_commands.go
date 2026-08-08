@@ -27,7 +27,7 @@ func (m *App) executeStatusChangeCmd(issueID, newStatus string) tea.Cmd {
 		ctx, cancel := context.WithTimeout(context.Background(), statusCommandTimeout)
 		defer cancel()
 		err := m.client.UpdateStatus(ctx, issueID, newStatus)
-		return statusUpdateCompleteMsg{err: err}
+		return statusUpdateCompleteMsg{issueID: issueID, err: err}
 	}
 }
 
@@ -37,7 +37,7 @@ func (m *App) executeReopenCmd(issueID string) tea.Cmd {
 		ctx, cancel := context.WithTimeout(context.Background(), statusCommandTimeout)
 		defer cancel()
 		err := m.client.Reopen(ctx, issueID)
-		return statusUpdateCompleteMsg{err: err}
+		return statusUpdateCompleteMsg{issueID: issueID, err: err}
 	}
 }
 
@@ -136,15 +136,15 @@ func (m *App) executeLabelsUpdate(msg LabelsUpdatedMsg) tea.Cmd {
 		ctx := context.Background()
 		for _, label := range msg.Added {
 			if err := m.client.AddLabel(ctx, msg.IssueID, label); err != nil {
-				return labelUpdateCompleteMsg{err: err}
+				return labelUpdateCompleteMsg{issueID: msg.IssueID, err: err}
 			}
 		}
 		for _, label := range msg.Removed {
 			if err := m.client.RemoveLabel(ctx, msg.IssueID, label); err != nil {
-				return labelUpdateCompleteMsg{err: err}
+				return labelUpdateCompleteMsg{issueID: msg.IssueID, err: err}
 			}
 		}
-		return labelUpdateCompleteMsg{err: nil}
+		return labelUpdateCompleteMsg{issueID: msg.IssueID, err: nil}
 	}
 }
 

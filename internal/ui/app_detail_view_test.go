@@ -123,15 +123,16 @@ func TestUpdateViewportContentPreservesScrollForSameSelection(t *testing.T) {
 func TestUpdateViewportContentDisplaysDesignSection(t *testing.T) {
 	node := &graph.Node{
 		Issue: beads.FullIssue{
-			ID:          "ab-101",
-			Title:       "Detail Layout",
-			Status:      "open",
-			IssueType:   "feature",
-			Priority:    2,
-			Description: "High-level summary.",
-			Design:      "## Architecture\n\nDocument component wiring.",
-			CreatedAt:   time.Date(2025, time.November, 21, 10, 0, 0, 0, time.UTC).Format(time.RFC3339),
-			UpdatedAt:   time.Date(2025, time.November, 21, 12, 0, 0, 0, time.UTC).Format(time.RFC3339),
+			ID:           "ab-101",
+			Title:        "Detail Layout",
+			Status:       "open",
+			IssueType:    "feature",
+			Priority:     2,
+			Description:  "High-level summary.",
+			Design:       "## Architecture\n\nDocument component wiring.",
+			DetailLoaded: true,
+			CreatedAt:    time.Date(2025, time.November, 21, 10, 0, 0, 0, time.UTC).Format(time.RFC3339),
+			UpdatedAt:    time.Date(2025, time.November, 21, 12, 0, 0, 0, time.UTC).Format(time.RFC3339),
 			Comments: []beads.Comment{
 				{
 					Author:    "Reviewer",
@@ -269,6 +270,7 @@ func TestUpdateViewportContentDisplaysAcceptanceSection(t *testing.T) {
 			Description:        "Ensure CLI presence",
 			Design:             "## Flow\n\n1. Detect CLI\n2. Compare version",
 			AcceptanceCriteria: "## Acceptance\n\n- Clear error when missing\n- Friendly instructions",
+			DetailLoaded:       true,
 			CreatedAt:          time.Date(2025, time.November, 22, 8, 0, 0, 0, time.UTC).Format(time.RFC3339),
 			UpdatedAt:          time.Date(2025, time.November, 22, 10, 0, 0, 0, time.UTC).Format(time.RFC3339),
 			Comments: []beads.Comment{

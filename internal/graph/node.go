@@ -25,6 +25,11 @@ type Node struct {
 	IsBlocked      bool
 	CommentsLoaded bool
 	CommentError   string
+	// DetailError records a failed lazy detail load (Client.Show) for the
+	// dolt skeleton/detail split, mirroring CommentError: it is cleared by
+	// the next successful load or by an explicit cache invalidation (a
+	// successful write to this issue, or a future full reconcile).
+	DetailError string
 
 	Expanded      bool
 	Depth         int

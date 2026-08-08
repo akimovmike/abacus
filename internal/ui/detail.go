@@ -211,18 +211,32 @@ func (m *App) updateViewportContent() {
 
 	renderMarkdown := buildMarkdownRenderer(m.outputFormat, vpWidth-2)
 	descSections := make([]string, 0, 5)
-	if strings.TrimSpace(iss.CloseReason) != "" {
-		descSections = append(descSections, renderContentSection("Close Reason:", renderMarkdown(iss.CloseReason)))
-	}
-	descSections = append(descSections, renderContentSection("Description:", renderMarkdown(iss.Description)))
-	if strings.TrimSpace(iss.Design) != "" {
-		descSections = append(descSections, renderContentSection("Design:", renderMarkdown(iss.Design)))
-	}
-	if strings.TrimSpace(iss.AcceptanceCriteria) != "" {
-		descSections = append(descSections, renderContentSection("Acceptance:", renderMarkdown(iss.AcceptanceCriteria)))
-	}
-	if strings.TrimSpace(iss.Notes) != "" {
-		descSections = append(descSections, renderContentSection("Notes:", renderMarkdown(iss.Notes)))
+	switch {
+	case node.DetailError != "":
+		// A lazy detail load (Client.Show) failed; show why instead of a
+		// blank that reads as genuinely empty (fold F13/R03).
+		descSections = append(descSections, renderContentSection("Description:",
+			styleBlockedText().Render("Failed to load details: "+node.DetailError)))
+	case !iss.DetailLoaded:
+		// dolt skeleton/detail split: Description/Design/Notes/
+		// AcceptanceCriteria/CloseReason are empty until the lazy load
+		// (dispatched by maybeTriggerDetailLoad) completes.
+		descSections = append(descSections, renderContentSection("Description:",
+			styleDoneText().Render("Loading details…")))
+	default:
+		if strings.TrimSpace(iss.CloseReason) != "" {
+			descSections = append(descSections, renderContentSection("Close Reason:", renderMarkdown(iss.CloseReason)))
+		}
+		descSections = append(descSections, renderContentSection("Description:", renderMarkdown(iss.Description)))
+		if strings.TrimSpace(iss.Design) != "" {
+			descSections = append(descSections, renderContentSection("Design:", renderMarkdown(iss.Design)))
+		}
+		if strings.TrimSpace(iss.AcceptanceCriteria) != "" {
+			descSections = append(descSections, renderContentSection("Acceptance:", renderMarkdown(iss.AcceptanceCriteria)))
+		}
+		if strings.TrimSpace(iss.Notes) != "" {
+			descSections = append(descSections, renderContentSection("Notes:", renderMarkdown(iss.Notes)))
+		}
 	}
 	if node.CommentError != "" {
 		errorBody := styleBlockedText().Render("Failed to load comments. Press 'c' to retry.") + "\n" +
