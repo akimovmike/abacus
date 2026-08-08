@@ -53,6 +53,7 @@ func (m *App) handleOverlayMsg(msg tea.Msg) (tea.Model, tea.Cmd, bool) {
 		}
 		invalidateCommentCache(m.roots, msg.issueID)
 		invalidateDetailCache(m.roots, msg.issueID)
+		delete(m.detailLoadInFlight, msg.issueID)
 		return m, m.forceRefresh(), true
 
 	case statusToastTickMsg:
@@ -108,6 +109,7 @@ func (m *App) handleOverlayMsg(msg tea.Msg) (tea.Model, tea.Cmd, bool) {
 		}
 		invalidateCommentCache(m.roots, msg.issueID)
 		invalidateDetailCache(m.roots, msg.issueID)
+		delete(m.detailLoadInFlight, msg.issueID)
 		return m, m.forceRefresh(), true
 
 	case labelsToastTickMsg:
@@ -188,6 +190,7 @@ func (m *App) handleOverlayMsg(msg tea.Msg) (tea.Model, tea.Cmd, bool) {
 		}
 		invalidateCommentCache(m.roots, msg.ID)
 		invalidateDetailCache(m.roots, msg.ID)
+		delete(m.detailLoadInFlight, msg.ID)
 		m.createToastBeadID = msg.ID
 		m.createToastIsUpdate = true
 		m.displayCreateToast(msg.Title, true)
@@ -391,6 +394,7 @@ func (m *App) handleOverlayMsg(msg tea.Msg) (tea.Model, tea.Cmd, bool) {
 		}
 		invalidateCommentCache(m.roots, msg.issueID)
 		invalidateDetailCache(m.roots, msg.issueID)
+		delete(m.detailLoadInFlight, msg.issueID)
 		return m, m.forceRefresh(), true
 
 	case priorityToastTickMsg:

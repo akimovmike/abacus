@@ -27,7 +27,9 @@ func NewDoltClient(beadsDir, database string, w Writer) (Client, error) {
 	if err != nil {
 		return nil, err
 	}
-	if err := checkDoltVersion(context.Background(), execDolt); err != nil {
+	ctx, cancel := context.WithTimeout(context.Background(), versionCheckTimeout)
+	defer cancel()
+	if err := checkDoltVersion(ctx, execDolt); err != nil {
 		return nil, err
 	}
 	return &doltClient{

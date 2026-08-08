@@ -194,6 +194,14 @@ func (r *doltRunner) snapshot(ctx context.Context) (string, error) {
 
 // asOf returns an " AS OF '<hash>'" clause for appending to a FROM clause,
 // pinning a query to the commit produced by snapshot.
+//
+// Precondition: hash must already be validated by snapshot()'s idCharset
+// check before this is called. sqlLiteral's error is deliberately discarded
+// below: idCharset ([A-Za-z0-9._-]) is a strict subset of sqlLiteralCharset
+// (adds only quote/dash handling), so a hash that passed snapshot()'s check
+// can never fail sqlLiteral. If a future caller passes an unvalidated hash,
+// this invariant no longer holds and the discarded error should be
+// reconsidered.
 func asOf(hash string) string {
 	lit, _ := sqlLiteral(hash) // hash validated by snapshot()
 	return " AS OF " + lit

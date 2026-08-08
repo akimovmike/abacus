@@ -235,6 +235,37 @@ func TestCheckDoltVersionNotAvailable(t *testing.T) {
 	}
 }
 
+// TestCheckDoltVersionRespectsContextTimeout guards NewDoltClient's
+// construction-time version gate (ab-6irx): checkDoltVersion must not hang
+// past its caller's deadline. The stub simulates a wedged `dolt version`
+// subprocess by blocking until ctx is done (mirroring how execDolt's
+// exec.CommandContext would be killed on timeout), and this asserts that a
+// short caller-supplied timeout makes checkDoltVersion return promptly with
+// an error rather than blocking for the stub's full duration.
+func TestCheckDoltVersionRespectsContextTimeout(t *testing.T) {
+	stub := func(ctx context.Context, dir string, args ...string) ([]byte, error) {
+		select {
+		case <-ctx.Done():
+			return nil, ctx.Err()
+		case <-time.After(2 * time.Second):
+			return []byte("dolt version 2.1.0"), nil
+		}
+	}
+	ctx, cancel := context.WithTimeout(context.Background(), 20*time.Millisecond)
+	defer cancel()
+
+	start := time.Now()
+	err := checkDoltVersion(ctx, stub)
+	elapsed := time.Since(start)
+
+	if err == nil {
+		t.Fatal("expected an error when the context times out before the stub returns")
+	}
+	if elapsed > time.Second {
+		t.Fatalf("checkDoltVersion took %v, want it to return promptly once ctx times out", elapsed)
+	}
+}
+
 func TestFirstLine(t *testing.T) {
 	cases := map[string]string{
 		"":             "",

@@ -245,6 +245,33 @@ func TestStatusUpdateCompleteInvalidatesDetailCache(t *testing.T) {
 	}
 }
 
+// TestStatusUpdateCompleteClearsInFlightDetailLoadGuard guards a race
+// flagged in the ab-6irx fix wave: a detail load for an issue in flight when
+// an edit to that same issue completes must not be left "in flight" forever
+// once the cache is invalidated. Without clearing detailLoadInFlight here, a
+// stale in-flight load landing after forceRefresh could be treated as
+// authoritative (blocking a fresh load via maybeTriggerDetailLoad's
+// in-flight guard) and set DetailLoaded=true with pre-edit text.
+func TestStatusUpdateCompleteClearsInFlightDetailLoadGuard(t *testing.T) {
+	node := &graph.Node{Issue: beads.FullIssue{
+		ID:           "ab-1",
+		Description:  "stale",
+		DetailLoaded: true,
+	}}
+	app := &App{
+		roots:              []*graph.Node{node},
+		client:             beads.NewMockClient(),
+		detailLoadInFlight: map[string]bool{"ab-1": true},
+	}
+
+	model, _ := app.Update(statusUpdateCompleteMsg{issueID: "ab-1"})
+	app = model.(*App)
+
+	if app.detailLoadInFlight["ab-1"] {
+		t.Fatal("expected detailLoadInFlight to be cleared when the acted-on issue's detail cache is invalidated")
+	}
+}
+
 // --- SHOULD: bd 1.1.x migrate-gate errors surface an actionable toast. ---
 
 func TestIsMigrateGateErrorDetectsMarkers(t *testing.T) {
