@@ -7,9 +7,20 @@ import (
 	tea "github.com/charmbracelet/bubbletea"
 )
 
-// reconcileMaxAge bounds how long the DB can stay quiet before an idle
-// auto-refresh tick still runs a full Export reconcile, even when no mtime
-// change was observed (ab-6irx.7). A metadata-only external edit
+// reconcileMaxAge bounds how long a Delta-capable client's DB can stay quiet
+// before an idle auto-refresh tick still runs a full Export reconcile, even
+// when no mtime change was observed (ab-6irx.7). This fallback applies only
+// to a Delta-capable client (see checkDBForChanges' deltaClient gate below):
+// a non-Delta client (sqlite, mocks) has no incremental path at all, so
+// reconcileDue already reports true unconditionally for it — it fully
+// reconciles on every mtime-triggered refresh already, and once mtime stops
+// advancing it has nothing analogous to deltaTicksSinceReconcile getting
+// stuck below threshold to recover from. Applying this fallback to it too
+// would add periodic background work (a full re-Export + rebuild, a visible
+// spinner blip) to an idle non-Delta session that previously did nothing
+// once quiet — an undisclosed scope expansion, not this fix's target.
+//
+// For a Delta-capable client, a metadata-only external edit
 // (label/dependency/comment) does bump the store's mtime and fires a Delta
 // tick on its own turn, but a Delta tick only sees issues whose own
 // updated_at moved past the watermark — content-only fingerprint
@@ -50,16 +61,22 @@ func (m *App) checkDBForChanges() tea.Cmd {
 	}
 
 	if !modTime.After(m.lastDBModTime) {
-		// The DB itself hasn't changed since the last successful refresh,
-		// but a lone external metadata-only edit may already be sitting
-		// unseen: on the tick it landed, it bumped mtime and advanced
-		// deltaTicksSinceReconcile by one via a Delta tick that can't see
-		// its content (see reconcileMaxAge doc above). If the DB then goes
-		// quiet, nothing else would ever push the bounded tick-count
-		// cadence to fire. Fire a full reconcile here, driven purely by the
-		// wall clock, so that edit surfaces within reconcileMaxAge
-		// regardless of further DB activity.
-		if m.reconcileIntervalElapsed() {
+		// Gated to a Delta-capable client (see reconcileMaxAge doc): a
+		// non-Delta client already fully reconciles on every mtime-triggered
+		// refresh and has nothing analogous to a Delta tick's watermark miss
+		// to recover from, so with mtime unchanged it correctly stays fully
+		// idle here, exactly as it did before this fallback existed.
+		//
+		// For a Delta-capable client, the DB itself hasn't changed since the
+		// last successful refresh, but a lone external metadata-only edit
+		// may already be sitting unseen: on the tick it landed, it bumped
+		// mtime and advanced deltaTicksSinceReconcile by one via a Delta
+		// tick that can't see its content. If the DB then goes quiet,
+		// nothing else would ever push the bounded tick-count cadence to
+		// fire. Fire a full reconcile here, driven purely by the wall clock,
+		// so that edit surfaces within reconcileMaxAge regardless of further
+		// DB activity.
+		if _, ok := m.client.(deltaClient); ok && m.reconcileIntervalElapsed() {
 			return m.startRefresh(modTime, true)
 		}
 		return nil

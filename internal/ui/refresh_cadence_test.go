@@ -77,6 +77,30 @@ func TestCheckDBForChangesNoReconcileBeforeIntervalElapses(t *testing.T) {
 	}
 }
 
+// TestCheckDBForChangesNoWallClockReconcileForNonDeltaClient is the
+// regression test for the plan-review fix: the wall-clock fallback must be
+// gated to a Delta-capable client. A non-Delta client (MockClient, matching
+// the sqlite backend's own lack of a Delta method) already fully reconciles
+// on every mtime-triggered refresh via reconcileDue's unconditional true, so
+// once mtime stops advancing it has nothing analogous to
+// deltaTicksSinceReconcile getting stuck below threshold to recover from.
+// Firing this fallback for it too would add a periodic full re-Export
+// forever to a session that previously did zero background work once idle
+// -- an undisclosed scope expansion this test locks out.
+func TestCheckDBForChangesNoWallClockReconcileForNonDeltaClient(t *testing.T) {
+	dbFile := createTempDBFile(t)
+	app := &App{
+		client:        beads.NewMockClient(),
+		dbPath:        dbFile,
+		lastDBModTime: fileModTime(t, dbFile),
+		lastReconcile: time.Now().Add(-reconcileMaxAge - time.Second),
+	}
+
+	if cmd := app.checkDBForChanges(); cmd != nil {
+		t.Fatal("expected no wall-clock reconcile for a non-Delta client, even past reconcileMaxAge")
+	}
+}
+
 // TestCheckDBForChangesRespectsSingleFlightForWallClockReconcile proves the
 // wall-clock path is gated by the same single-flight guard as every other
 // refresh: a reconcile already in flight must never be stacked with another
